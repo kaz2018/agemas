@@ -1,0 +1,12 @@
+[
+  {
+    "post_id": "post_001",
+    "user_id": "user_002",
+    "user_name": "佐藤太郎",
+    "message": "欲しいです！",
+    "image": null,
+    "status": "proposed",
+    "created_at": "2026-01-12 20:33:12",
+    "reply_id": "reply_001"
+  }
+]
