@@ -79,6 +79,7 @@
 ### 2.1 Google Sheets コレクション構造
 
 #### **Sheet 1: 『master_users』**（ユーザーマスタ）
+URL: https://docs.google.com/spreadsheets/d/1DcpgR2Ksscj1X_EOPBFbRbiqozT84lMaGV9UMO16kek/edit?gid=0#gid=0
 
 ```
 | user_id  | name     | password_hash        | status   | created_at |
@@ -95,6 +96,7 @@
 ---
 
 #### **Sheet 2: 『posts』**（投稿）
+URL: https://docs.google.com/spreadsheets/d/1T-K9XiEkz3lRjXkiQqLlRRqziA9Bj6a142WU0nf8eX0/edit?gid=0#gid=0
 
 ```
 | post_id  | user_id  | user_name | title        | description | category | images               | status   | created_at | decided_user_id | decided_at |
@@ -110,6 +112,7 @@
 ---
 
 #### **Sheet 3: 『posts_replies』**（返信）
+URL: https://docs.google.com/spreadsheets/d/1I6vnan3Io8KA9MAKLCemW20KEnHqaQhCIUDlZj5sbM0/edit?gid=0#gid=0
 
 ```
 | reply_id | post_id  | user_id  | user_name   | message        | image               | status    | created_at |
@@ -125,6 +128,7 @@
 ---
 
 #### **Sheet 4: 『logs』**（ログ）
+URL: https://docs.google.com/spreadsheets/d/11h3sfe3hkqRf_RlqDvSTPHQRWPLKr0PetmszL2SgYLs/edit?gid=0#gid=0
 
 ```
 | log_id   | action       | user_id  | post_id  | reply_id | details                          | timestamp          |
