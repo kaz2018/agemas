@@ -547,6 +547,7 @@ curl https://agari-app.run.app/
 | **Hosting** | Cloud Run | Native |
 | **言語** | Python | 3.11+ |
 
+cloud storage URI: gs://agemas-images
 ### 8.1 外部ライブラリ
 
 ```
