@@ -326,7 +326,32 @@ onDestroy(() => { killLive?.(); });
 
 ## Step 6: 出品作成・編集・削除機能実装
 
-（実施後に追記）
+### 6-1. 出品作成（/items/new）
+
+`src/routes/items/new/+page.svelte` を作成する。
+
+- 画像は `/api/upload` に POST → R2キーを取得
+- SurrealDB への登録は `db.query('INSERT INTO item { owner: $auth.id, ... }')`
+- `owner` は `$auth.id`（サーバー側で設定されるため安全）
+
+### 6-2. 出品編集・削除（/items/[id]/edit）
+
+`src/routes/items/[id]/edit/+page.svelte` を作成する。
+
+- レコード取得: `SELECT * FROM type::thing("item", $id)` でIDを安全にバインド
+- 更新: `UPDATE type::thing("item", $id) SET ...`
+- 削除: `DELETE type::thing("item", $id)`
+- 既存画像はキーのリストで管理し、×ボタンで除外 → 新規画像と結合して保存
+
+**出品一覧での編集リンク:**
+```svelte
+{#if item.owner === auth.user?.id}
+  <a href={`/items/${item.id.split(':')[1]}/edit`}>編集</a>
+{/if}
+```
+SurrealDB のレコードIDは `item:abc123` 形式なので `split(':')[1]` でID部分を取得。
+
+**アクセス制御:** SurrealDB のパーミッション（`owner = $auth.id`）でサーバー側でも保証される。
 
 ---
 

@@ -124,8 +124,16 @@
 					<!-- 説明文 -->
 					<p class="mb-2 text-sm text-gray-600 line-clamp-2">{item.description}</p>
 
-					<!-- 出品者 -->
-					<p class="text-xs text-gray-400">出品者: {item.owner_name ?? ''}</p>
+					<!-- 出品者・編集リンク -->
+					<div class="flex items-center justify-between">
+						<p class="text-xs text-gray-400">出品者: {item.owner_name ?? ''}</p>
+						{#if item.owner === auth.user?.id}
+							<a
+								href={`/items/${item.id.split(':')[1]}/edit`}
+								class="text-xs text-blue-400 hover:underline"
+							>編集</a>
+						{/if}
+					</div>
 				</div>
 			{/each}
 		</div>
