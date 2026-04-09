@@ -171,6 +171,9 @@
 			>
 				＋ 出品する
 			</a>
+			{#if auth.user?.role === 'admin'}
+				<a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">管理</a>
+			{/if}
 			<button onclick={handleLogout} class="text-sm text-gray-400 hover:text-gray-600">
 				ログアウト
 			</button>

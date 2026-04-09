@@ -12,6 +12,7 @@ USE DATABASE main;
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
     FOR select WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR create WHERE $auth.role = 'admin'
     FOR update WHERE id = $auth.id OR $auth.role = 'admin'
     FOR delete WHERE $auth.role = 'admin';
 

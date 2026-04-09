@@ -508,7 +508,103 @@ async function handleNegotiationFailed(itemId: string) {
 
 ## Step 8: 管理者画面実装
 
-（実施後に追記）
+### 8-1. SurrealDB スキーマ更新
+
+`user` テーブルに `FOR create` 権限を追加する必要がある。  
+SurrealDB Cloud の「Run queries」で以下を実行する。
+
+```sql
+USE NAMESPACE agemas;
+USE DATABASE main;
+
+DEFINE TABLE user SCHEMAFULL
+  PERMISSIONS
+    FOR select WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR create WHERE $auth.role = 'admin'
+    FOR update WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR delete WHERE $auth.role = 'admin';
+```
+
+> **注意:** `DEFINE TABLE ... PERMISSIONS` は上書き定義なので、全権限を再度列挙する。  
+> `FOR create` を追加した場合、既存の `FOR select`・`FOR update`・`FOR delete` も含めて書くこと。
+
+### 8-2. 管理者ユーザー作成（初回のみ）
+
+アプリからはまだ管理者ユーザーを作れないため、初回は SurrealDB Cloud の「Run queries」で直接作成する。
+
+```sql
+INSERT INTO user {
+  user_id: 1,
+  last_name: "（姓）",
+  first_name: "（名）",
+  password: crypto::argon2::generate("1234"),
+  role: "admin"
+};
+```
+
+> **注意:** `crypto::argon2::generate()` はSurrealDB組み込み関数。平文PINをargon2ハッシュに変換して保存する。
+
+### 8-3. 管理者ページ実装
+
+`src/routes/admin/+page.svelte` を作成する。
+
+主な機能：
+- **ユーザー一覧**: user_id・姓名・ロール表示
+- **ユーザー編集（インライン）**: 姓・名・PIN（空白なら変更なし）・ロール変更
+- **ユーザー削除**: 自分自身は削除不可（`user.id !== auth.user?.id` でガード）
+- **ユーザー作成フォーム**: user_id（整数）・姓・名・PIN・ロール
+
+**管理者ガード（onMount）**:
+
+```ts
+onMount(async () => {
+  if (!auth.loading && auth.user?.role !== 'admin') {
+    goto('/');
+    return;
+  }
+  await loadUsers();
+});
+```
+
+**ユーザー作成クエリ（パスワードのargon2ハッシュ化はSurrealDB側で行う）**:
+
+```ts
+await db.query(
+  `INSERT INTO user {
+    user_id: <int>$user_id,
+    last_name: $last_name,
+    first_name: $first_name,
+    password: crypto::argon2::generate($password),
+    role: $role
+  }`,
+  { user_id: parseInt(newUserId), last_name, first_name, password, role }
+);
+```
+
+> **注意:** `<int>$user_id` のキャスト構文が必要。`$user_id` を number で渡しても SurrealDB が float として扱う場合があるため。
+
+**パスワードリセットクエリ**:
+
+```ts
+await db.query(
+  `UPDATE type::thing("user", $id) SET
+    last_name=$last_name, first_name=$first_name,
+    password=crypto::argon2::generate($password), role=$role`,
+  { id: idPart, last_name, first_name, password, role }
+);
+```
+
+### 8-4. トップページに管理リンクを追加
+
+`src/routes/+page.svelte` のヘッダーに管理者のみ表示するリンクを追加する。
+
+```svelte
+{#if auth.user?.role === 'admin'}
+  <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">管理</a>
+{/if}
+```
+
+---
 
 ---
 
