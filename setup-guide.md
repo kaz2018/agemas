@@ -282,7 +282,45 @@ interface Platform {
 
 ## Step 5: 出品一覧画面実装
 
-（実施後に追記）
+### 5-1. 型定義（src/lib/types.ts）
+
+`Item`・`Want` の TypeScript 型を定義する。
+
+### 5-2. トップページ（src/routes/+page.svelte）
+
+- `onMount` で初期データを取得（`db.query()` で `status != 'transferred'` の件のみ）
+- 出品者名は `owner.last_name + owner.first_name AS owner_name` でJOIN取得
+- Live Query でリアルタイム更新
+
+**Live Query の注意点:**
+
+```ts
+import { Table } from 'surrealdb';
+
+// LiveResource には Table クラスが必要（文字列 'item' では型エラー）
+const sub = await db.live<Item>(new Table('item'));
+```
+
+**onMount のクリーンアップ:**
+
+```ts
+// async onMount 内で return () => cleanup() は型エラーになる
+// onDestroy を別途使う
+let killLive: (() => Promise<void>) | undefined;
+
+onMount(async () => {
+  const sub = await db.live<Item>(new Table('item'));
+  killLive = () => sub.kill();
+  // ...
+});
+
+onDestroy(() => { killLive?.(); });
+```
+
+**Live Query のメッセージ処理:**
+- `action === 'CREATE'` → リストに追加
+- `action === 'UPDATE'` → `transferred` になったら除外、それ以外は更新
+- `action === 'DELETE'` → リストから削除（`String(msg.recordId)` で比較）
 
 ---
 
