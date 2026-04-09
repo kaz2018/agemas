@@ -1,10 +1,13 @@
 # DB設計（SurrealDB）
 
-SurrealDB v2以降の構文を使用。`DEFINE SCOPE`は削除済みのため`DEFINE ACCESS`を使用する。
+SurrealDB v3の構文を使用。`DEFINE SCOPE`はv2で削除済みのため`DEFINE ACCESS`を使用する。
 
 ## スキーマ定義
 
 ```sql
+USE NAMESPACE agemas;
+USE DATABASE main;
+
 -- user テーブル
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
@@ -56,7 +59,7 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
     SELECT * FROM user
     WHERE user_id = $user_id AND crypto::argon2::compare(password, $password)
   )
-  DURATION FOR SESSION 1d;
+  DURATION FOR TOKEN 15m FOR SESSION 1d;
 ```
 
 ## ステータス一覧（item.status）
@@ -72,7 +75,7 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 ```typescript
 // ログインキーは user_id（整数） + 4桁PIN
 await db.signin({
-  namespace: 'swap',
+  namespace: 'agemas',
   database: 'main',
   access: 'user',       // v2以前は 'scope'
   variables: {          // v2以前はフラットに渡していた
@@ -82,7 +85,7 @@ await db.signin({
 });
 ```
 
-## v1→v2 主な変更点メモ
+## バージョン別の主な変更点メモ
 
 | 旧（v1） | 新（v2+） |
 |----------|-----------|
@@ -91,3 +94,8 @@ await db.signin({
 | `$scope` 変数 | `$session.ac`（アクセスメソッド名） |
 | SDK: `scope: 'user'` | SDK: `access: 'user'` |
 | SDK: 変数フラット渡し | SDK: `variables: { ... }` |
+
+| 旧（v2） | 新（v3） |
+|----------|----------|
+| `DURATION FOR SESSION 1d` | `DURATION FOR TOKEN 15m FOR SESSION 1d`（TOKEN期間を個別指定） |
+| `<future>` 型のVALUE句 | `COMPUTED` キーワードに変更 |

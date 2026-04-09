@@ -1,4 +1,15 @@
 __pycache__/
 *.pyc
+
+# 環境変数（SurrealDB接続URLなど秘密情報を含む）
 .env
+.env.local
+.env.*.local
+
+# 自動生成ファイル
+node_modules/
+.svelte-kit/
+build/
+
+# OS
 .DS_Store
