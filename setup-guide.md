@@ -357,7 +357,152 @@ SurrealDB のレコードIDは `item:abc123` 形式なので `split(':')[1]` で
 
 ## Step 7: ほしいボタン & ステータス管理実装
 
-（実施後に追記）
+### 7-1. 型定義を更新（src/lib/types.ts）
+
+`Item` に `requester_name?: string`、`Want` に `requester_name?: string` を追加する。
+
+```ts
+export type Item = {
+  // ...（既存フィールド）
+  owner_name?: string;
+  requester_name?: string; // negotiating状態のとき希望者の名前
+};
+
+export type Want = {
+  id: string;
+  item: string;
+  requester: string;
+  created_at: string;
+  requester_name?: string;
+};
+```
+
+### 7-2. トップページに機能追加（src/routes/+page.svelte）
+
+#### 初期データ取得
+
+アイテム一覧と want 一覧を並行取得し、アイテムに希望者名を付加する。
+
+```ts
+const [itemResult, wantResult] = await Promise.all([
+  db.query<[Item[]]>(`SELECT *, owner.last_name + owner.first_name AS owner_name FROM item WHERE status != 'transferred' ORDER BY created_at DESC`),
+  db.query<[Want[]]>('SELECT * FROM want')
+]);
+
+const allWants = wantResult[0] ?? [];
+const wantByItemId = new Map(allWants.map((w) => [String(w.item), w]));
+
+items = (itemResult[0] ?? []).map((item) => ({
+  ...item,
+  requester_name: wantByItemId.get(String(item.id))?.requester_name
+}));
+
+// 自分がほしいボタンを押したアイテムIDセット（ほしいボタン非表示判定用）
+myWantIds = new Set(
+  allWants.filter((w) => String(w.requester) === auth.user?.id).map((w) => String(w.item))
+);
+```
+
+> **注意:** `want` テーブルのパーミッションは `requester = $auth.id OR item.owner = $auth.id` のため、
+> 一般ユーザーは「自分がほしいを押したwant」と「自分の出品に対するwant」のみ取得できる。
+> `SELECT * FROM want` だけで自分に関係するwantのみ返ってくる。
+
+#### Live Query UPDATE ハンドラー修正
+
+UPDATE 時は JOINフィールド（`owner_name`, `requester_name`）が含まれないため、補完処理を追加する。
+
+```ts
+} else if (msg.action === 'UPDATE') {
+  const updated = msg.value as Item;
+  if (updated.status === 'transferred') {
+    items = items.filter((i) => i.id !== updated.id);
+  } else {
+    // available に戻ったら myWantIds から除外
+    if (updated.status === 'available') {
+      const newSet = new Set(myWantIds);
+      newSet.delete(String(updated.id));
+      myWantIds = newSet;
+    }
+    // want テーブルから希望者名を別途取得して付加
+    const enriched = await enrichItemWithRequester(updated);
+    items = items.map((i) => (i.id === updated.id ? enriched : i));
+  }
+}
+```
+
+```ts
+// 希望者名を補完するヘルパー
+async function enrichItemWithRequester(item: Item): Promise<Item> {
+  const idPart = String(item.id).split(':')[1];
+  const r = await db.query<[Want[]]>(
+    'SELECT requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::thing("item", $id)',
+    { id: idPart }
+  );
+  return { ...item, requester_name: r[0]?.[0]?.requester_name };
+}
+```
+
+#### アクション関数
+
+```ts
+// ほしいボタン: wantレコード作成 + status を negotiating に更新
+async function handleWant(itemId: string) {
+  const idPart = itemId.split(':')[1];
+  await db.query('INSERT INTO want { item: type::thing("item", $id), requester: $auth.id }', { id: idPart });
+  await db.query("UPDATE type::thing(\"item\", $id) SET status='negotiating', updated_at=time::now()", { id: idPart });
+}
+
+// 譲渡成立: status を transferred に更新（Live Queryが一覧から除外する）
+async function handleTransferred(itemId: string) {
+  const idPart = itemId.split(':')[1];
+  await db.query("UPDATE type::thing(\"item\", $id) SET status='transferred', updated_at=time::now()", { id: idPart });
+}
+
+// 交渉決裂: wantレコード削除 + status を available に戻す
+async function handleNegotiationFailed(itemId: string) {
+  const idPart = itemId.split(':')[1];
+  await db.query('DELETE want WHERE item = type::thing("item", $id)', { id: idPart });
+  await db.query("UPDATE type::thing(\"item\", $id) SET status='available', updated_at=time::now()", { id: idPart });
+}
+```
+
+#### UI: ほしいボタン / ステータス操作
+
+各アイテムカードの下部に条件分岐でボタンを表示する。
+
+```svelte
+<div class="mt-3 flex items-center justify-end gap-2">
+  {#if item.status === 'available' && item.owner !== auth.user?.id}
+    <!-- ほしいボタン（自分が出品していないavailable品） -->
+    <button onclick={() => handleWant(item.id)}>ほしい</button>
+
+  {:else if item.status === 'negotiating' && item.owner === auth.user?.id}
+    <!-- 出品者向け: 希望者名 + 交渉決裂 / 譲渡成立 -->
+    {#if item.requester_name}
+      <span>希望者: {item.requester_name}</span>
+    {/if}
+    <button onclick={() => handleNegotiationFailed(item.id)}>交渉決裂</button>
+    <button onclick={() => handleTransferred(item.id)}>譲渡成立</button>
+
+  {:else if item.status === 'negotiating' && myWantIds.has(item.id)}
+    <!-- 自分がほしいを押した: 申請済み表示 -->
+    <span>申請中...</span>
+  {/if}
+</div>
+```
+
+### ステータス遷移まとめ
+
+| 操作 | 前 | 後 | 誰が操作 |
+|------|----|----|---------|
+| ほしいボタン押下 | `available` | `negotiating` | 非出品者 |
+| 譲渡成立ボタン | `negotiating` | `transferred` | 出品者 |
+| 交渉決裂ボタン | `negotiating` | `available` | 出品者 |
+
+- `transferred` になったアイテムは一覧から非表示（SurrealDB のパーミッションでも `status != 'transferred'` でブロック）
+- `交渉決裂` 時は `DELETE want WHERE item = ...` で want レコードも削除する
+
+---
 
 ---
 

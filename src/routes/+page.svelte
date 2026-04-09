@@ -3,11 +3,13 @@
 	import { Table } from 'surrealdb';
 	import { db } from '$lib/db';
 	import { auth, logout } from '$lib/auth.svelte';
-	import type { Item } from '$lib/types';
+	import type { Item, Want } from '$lib/types';
 	import { goto } from '$app/navigation';
 
 	let items = $state<Item[]>([]);
 	let loading = $state(true);
+	let actionLoading = $state<Record<string, boolean>>({});
+	let myWantIds = $state<Set<string>>(new Set());
 	let killLive: (() => Promise<void>) | undefined;
 
 	// ステータスの日本語表示
@@ -23,21 +25,47 @@
 		transferred: 'bg-gray-100 text-gray-500'
 	};
 
+	// wantのIDからitem ID部分を取得してitemに希望者名を付加する
+	async function enrichItemWithRequester(item: Item): Promise<Item> {
+		const idPart = String(item.id).split(':')[1];
+		const r = await db.query<[Want[]]>(
+			'SELECT requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::thing("item", $id)',
+			{ id: idPart }
+		);
+		return { ...item, requester_name: r[0]?.[0]?.requester_name };
+	}
+
 	onMount(async () => {
-		// 初期データ取得（出品者名も一緒に取得）
-		const result = await db.query<[Item[]]>(`
-			SELECT
-				*,
-				owner.last_name + owner.first_name AS owner_name
-			FROM item
-			WHERE status != 'transferred'
-			ORDER BY created_at DESC
-		`);
-		items = result[0] ?? [];
+		// 初期データ: アイテム一覧 + 自分が関わるwant一覧を並行取得
+		const [itemResult, wantResult] = await Promise.all([
+			db.query<[Item[]]>(`
+				SELECT
+					*,
+					owner.last_name + owner.first_name AS owner_name
+				FROM item
+				WHERE status != 'transferred'
+				ORDER BY created_at DESC
+			`),
+			db.query<[Want[]]>('SELECT * FROM want')
+		]);
+
+		const allWants = wantResult[0] ?? [];
+		const wantByItemId = new Map(allWants.map((w) => [String(w.item), w]));
+
+		// アイテムに希望者名を付加
+		items = (itemResult[0] ?? []).map((item) => ({
+			...item,
+			requester_name: wantByItemId.get(String(item.id))?.requester_name
+		}));
+
+		// 自分がほしいボタンを押したアイテムのIDセット
+		myWantIds = new Set(
+			allWants.filter((w) => String(w.requester) === auth.user?.id).map((w) => String(w.item))
+		);
+
 		loading = false;
 
 		// Live Query: リアルタイム更新
-		// LiveResource には Table クラスが必要
 		const sub = await db.live<Item>(new Table('item'));
 		killLive = () => sub.kill();
 
@@ -53,7 +81,15 @@
 					if (updated.status === 'transferred') {
 						items = items.filter((i) => i.id !== updated.id);
 					} else {
-						items = items.map((i) => (i.id === updated.id ? updated : i));
+						// available に戻ったら myWantIds から除外
+						if (updated.status === 'available') {
+							const newSet = new Set(myWantIds);
+							newSet.delete(String(updated.id));
+							myWantIds = newSet;
+						}
+						// JOINフィールドを補完して更新
+						const enriched = await enrichItemWithRequester(updated);
+						items = items.map((i) => (i.id === updated.id ? enriched : i));
 					}
 				} else if (msg.action === 'DELETE') {
 					items = items.filter((i) => i.id !== String(msg.recordId));
@@ -62,7 +98,6 @@
 		})();
 	});
 
-	// コンポーネント破棄時にLive購読を終了
 	onDestroy(() => {
 		killLive?.();
 	});
@@ -70,6 +105,55 @@
 	async function handleLogout() {
 		await logout();
 		goto('/login');
+	}
+
+	// ほしいボタン: wantレコード作成 + status を negotiating に更新
+	async function handleWant(itemId: string) {
+		const idPart = itemId.split(':')[1];
+		actionLoading[itemId] = true;
+		try {
+			await db.query('INSERT INTO want { item: type::thing("item", $id), requester: $auth.id }', {
+				id: idPart
+			});
+			await db.query(
+				"UPDATE type::thing(\"item\", $id) SET status='negotiating', updated_at=time::now()",
+				{ id: idPart }
+			);
+			const newSet = new Set(myWantIds);
+			newSet.add(itemId);
+			myWantIds = newSet;
+		} finally {
+			actionLoading[itemId] = false;
+		}
+	}
+
+	// 譲渡成立: status を transferred に更新（Live Queryが一覧から除外する）
+	async function handleTransferred(itemId: string) {
+		const idPart = itemId.split(':')[1];
+		actionLoading[itemId] = true;
+		try {
+			await db.query(
+				"UPDATE type::thing(\"item\", $id) SET status='transferred', updated_at=time::now()",
+				{ id: idPart }
+			);
+		} finally {
+			actionLoading[itemId] = false;
+		}
+	}
+
+	// 交渉決裂: wantレコード削除 + status を available に戻す
+	async function handleNegotiationFailed(itemId: string) {
+		const idPart = itemId.split(':')[1];
+		actionLoading[itemId] = true;
+		try {
+			await db.query('DELETE want WHERE item = type::thing("item", $id)', { id: idPart });
+			await db.query(
+				"UPDATE type::thing(\"item\", $id) SET status='available', updated_at=time::now()",
+				{ id: idPart }
+			);
+		} finally {
+			actionLoading[itemId] = false;
+		}
 	}
 </script>
 
@@ -132,6 +216,42 @@
 								href={`/items/${item.id.split(':')[1]}/edit`}
 								class="text-xs text-blue-400 hover:underline"
 							>編集</a>
+						{/if}
+					</div>
+
+					<!-- ほしいボタン / ステータス操作 -->
+					<div class="mt-3 flex items-center justify-end gap-2">
+						{#if item.status === 'available' && item.owner !== auth.user?.id}
+							<!-- ほしいボタン（自分が出品していないavailable品） -->
+							<button
+								onclick={() => handleWant(item.id)}
+								disabled={actionLoading[item.id]}
+								class="rounded bg-pink-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-pink-600 disabled:opacity-50"
+							>
+								{actionLoading[item.id] ? '処理中...' : 'ほしい'}
+							</button>
+						{:else if item.status === 'negotiating' && item.owner === auth.user?.id}
+							<!-- 出品者向け: 希望者名 + 交渉決裂 / 譲渡成立 -->
+							{#if item.requester_name}
+								<span class="text-xs text-gray-400">希望者: {item.requester_name}</span>
+							{/if}
+							<button
+								onclick={() => handleNegotiationFailed(item.id)}
+								disabled={actionLoading[item.id]}
+								class="rounded border border-gray-300 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+							>
+								{actionLoading[item.id] ? '処理中...' : '交渉決裂'}
+							</button>
+							<button
+								onclick={() => handleTransferred(item.id)}
+								disabled={actionLoading[item.id]}
+								class="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+							>
+								{actionLoading[item.id] ? '処理中...' : '譲渡成立'}
+							</button>
+						{:else if item.status === 'negotiating' && myWantIds.has(item.id)}
+							<!-- 自分がほしいを押した: 申請済み表示 -->
+							<span class="text-xs font-medium text-yellow-600">申請中...</span>
 						{/if}
 					</div>
 				</div>

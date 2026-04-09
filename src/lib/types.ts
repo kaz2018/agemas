@@ -7,8 +7,9 @@ export type Item = {
 	status: 'available' | 'negotiating' | 'transferred';
 	created_at: string;
 	updated_at: string;
-	// JOINして取得する出品者情報
+	// JOINして取得するフィールド
 	owner_name?: string;
+	requester_name?: string; // negotiating状態のとき希望者の名前
 };
 
 export type Want = {
@@ -16,4 +17,6 @@ export type Want = {
 	item: string;
 	requester: string;
 	created_at: string;
+	// JOINして取得するフィールド
+	requester_name?: string;
 };
