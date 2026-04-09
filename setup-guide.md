@@ -179,7 +179,60 @@ PUBLIC_SURREALDB_URL=wss://your-instance.aws-aps1.surreal.cloud
 
 ## Step 3: Cloudflare R2 バケット設定
 
-（実施後に追記）
+### 3-1. Cloudflare にログイン
+
+```bash
+npx wrangler login
+```
+
+ブラウザが開くので Cloudflare アカウントで認証する。
+
+### 3-2. R2 バケット作成
+
+```bash
+npx wrangler r2 bucket create <bucket-name>
+```
+
+例: `npx wrangler r2 bucket create agemas-images`
+
+成功すると `✅ Created bucket '<bucket-name>'` と表示される。
+
+### 3-3. wrangler.toml を作成
+
+プロジェクトルートに `wrangler.toml` を作成する。
+
+```toml
+name = "<project-name>"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "<bucket-name>"
+```
+
+### 3-4. TypeScript 型定義を更新
+
+`src/app.d.ts` の `Platform` インターフェースに R2Bucket を追加する。
+
+```ts
+interface Platform {
+  env: {
+    IMAGES: R2Bucket;
+  };
+}
+```
+
+### 3-5. APIルートを作成
+
+- `src/routes/api/upload/+server.ts` — 画像アップロード（POST）
+- `src/routes/api/images/[key]/+server.ts` — 画像取得（GET）・削除（DELETE）
+
+アップロードAPIの主なバリデーション：
+- 許可形式: `image/jpeg`, `image/png`, `image/webp`, `image/gif`
+- 最大サイズ: 5MB
+- キー: `${Date.now()}-${crypto.randomUUID()}.${ext}`（重複防止）
+
+画像取得APIは `Cache-Control: public, max-age=31536000`（1年）を返す。
 
 ---
 

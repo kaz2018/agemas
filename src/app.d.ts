@@ -6,7 +6,11 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		// interface PageState {}
-		// interface Platform {}
+		interface Platform {
+			env: {
+				IMAGES: R2Bucket; // Cloudflare R2 画像バケット
+			};
+		}
 	}
 }
 
