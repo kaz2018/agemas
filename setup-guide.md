@@ -52,10 +52,13 @@ npm install surrealdb --legacy-peer-deps
 npm uninstall @sveltejs/adapter-auto
 ```
 
-> **注意:** `surrealdb` は TypeScript の peer dependency 競合が発生する場合がある。`.npmrc` に以下を追記して回避する。
+> **注意:** **SvelteKit が TypeScript 6.x を使用している場合、この設定は必須。**
+> `surrealdb@2.x` の peer dependency が `typescript@"^5.0.0"`（5.x のみ）のため、TypeScript 6.x と競合する。
+> `.npmrc` をプロジェクトルートに作成して回避する。
 > ```
 > legacy-peer-deps=true
 > ```
+> surrealdb 側が peer dependency を更新した場合は不要になる可能性がある。
 
 ### 1-4. svelte.config.js を更新
 
