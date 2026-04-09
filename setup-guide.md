@@ -238,7 +238,45 @@ interface Platform {
 
 ## Step 4: 認証機能実装
 
-（実施後に追記）
+### 4-1. 認証の設計方針
+
+- **認証ロジック（パスワード検証）は SurrealDB Cloud が行う**
+- ブラウザ側は `db.signin()` で JWT を取得・保持するだけ
+- SvelteKit はその JWT を使ってページガード・UI表示を行う
+
+### 4-2. auth.svelte.ts（認証状態管理）
+
+`src/lib/auth.svelte.ts` を作成する。`.svelte.ts` 拡張子にすることで `$state` が使用可能。
+
+主な関数：
+- `initAuth()` — アプリ起動時に既存セッションを復元（`SELECT * FROM $auth` で確認）
+- `login(userId, password)` — `db.signin()` を呼び JWT 取得 → ユーザー情報をstateに保存
+- `logout()` — `db.invalidate()` でトークン破棄
+
+> **注意:** surrealdb v2 には `db.info()` がない。`SELECT * FROM $auth` でログインユーザーを取得する。
+
+> **注意:** `db.signin()` の引数は `access:` （v1の`scope:`ではない）、変数は `variables: {}` でネストする。
+
+### 4-3. rateLimit.ts（ブルートフォース対策）
+
+`src/lib/rateLimit.ts` を作成する。localStorage でログイン失敗回数を管理。
+
+- 5回失敗で15分ロック
+- `checkRateLimit(userId)` — ロック中か確認
+- `recordFailure(userId)` — 失敗を記録
+- `recordSuccess(userId)` — 成功時にリセット
+
+### 4-4. ログインページ（/login）
+
+`src/routes/login/+page.svelte` を作成する。
+
+- user_id（整数）+ PIN（4桁、`inputmode="numeric"`）の入力フォーム
+- ログイン済みなら `$effect` でトップへリダイレクト
+- エラー時はメッセージを表示
+
+### 4-5. +layout.svelte にページガードを追加
+
+`onMount` で `initAuth()` を呼び出し、`$effect` で未ログイン時に `/login` にリダイレクト。セッション復元中はローディング表示。
 
 ---
 
