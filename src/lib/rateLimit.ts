@@ -7,11 +7,11 @@ type AttemptRecord = {
 	lockedUntil: number | null;
 };
 
-function getKey(userId: number) {
+function getKey(userId: string) {
 	return `login_attempts_${userId}`;
 }
 
-export function checkRateLimit(userId: number): { allowed: boolean; remainingMs?: number } {
+export function checkRateLimit(userId: string): { allowed: boolean; remainingMs?: number } {
 	const raw = localStorage.getItem(getKey(userId));
 	if (!raw) return { allowed: true };
 
@@ -24,7 +24,7 @@ export function checkRateLimit(userId: number): { allowed: boolean; remainingMs?
 	return { allowed: true };
 }
 
-export function recordFailure(userId: number) {
+export function recordFailure(userId: string) {
 	const raw = localStorage.getItem(getKey(userId));
 	const record: AttemptRecord = raw ? JSON.parse(raw) : { count: 0, lockedUntil: null };
 
@@ -37,6 +37,6 @@ export function recordFailure(userId: number) {
 	localStorage.setItem(getKey(userId), JSON.stringify(record));
 }
 
-export function recordSuccess(userId: number) {
+export function recordSuccess(userId: string) {
 	localStorage.removeItem(getKey(userId));
 }

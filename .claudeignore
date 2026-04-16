@@ -1,0 +1,8 @@
+# 秘密情報
+.env.local
+.env.*.local
+
+# 自動生成・大容量ファイル
+node_modules/
+.svelte-kit/
+build/

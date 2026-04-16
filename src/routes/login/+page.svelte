@@ -17,9 +17,9 @@
 		e.preventDefault();
 		errorMsg = '';
 
-		const id = parseInt(userId);
-		if (isNaN(id)) {
-			errorMsg = 'IDは数字で入力してください';
+		// 3桁数字バリデーション（例: "001"）
+		if (!/^\d{3}$/.test(userId)) {
+			errorMsg = 'IDは3桁の数字で入力してください（例: 001）';
 			return;
 		}
 		if (!/^\d{4}$/.test(password)) {
@@ -28,7 +28,7 @@
 		}
 
 		// レート制限チェック
-		const { allowed, remainingMs } = checkRateLimit(id);
+		const { allowed, remainingMs } = checkRateLimit(userId);
 		if (!allowed) {
 			const minutes = Math.ceil((remainingMs ?? 0) / 60000);
 			errorMsg = `ログイン試行が多すぎます。${minutes}分後に再試行してください`;
@@ -37,11 +37,11 @@
 
 		loading = true;
 		try {
-			await login(id, password);
-			recordSuccess(id);
+			await login(userId, password);
+			recordSuccess(userId);
 			goto('/');
 		} catch {
-			recordFailure(id);
+			recordFailure(userId);
 			errorMsg = 'IDまたはPINが正しくありません';
 		} finally {
 			loading = false;
@@ -55,12 +55,14 @@
 
 		<form onsubmit={handleSubmit} class="space-y-4">
 			<div>
-				<label for="userId" class="mb-1 block text-sm font-medium text-gray-700">ID</label>
+				<label for="userId" class="mb-1 block text-sm font-medium text-gray-700">ID（3桁）</label>
 				<input
 					id="userId"
-					type="number"
+					type="text"
+					inputmode="numeric"
+					maxlength={3}
 					bind:value={userId}
-					placeholder="例: 1"
+					placeholder="例: 001"
 					required
 					class="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
 				/>

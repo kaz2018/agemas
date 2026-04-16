@@ -60,6 +60,10 @@
 			createError = '全項目を入力してください';
 			return;
 		}
+		if (!/^\d{3}$/.test(newUserId)) {
+			createError = 'IDは3桁の数字で入力してください（例: 001）';
+			return;
+		}
 		if (newPassword.length !== 4 || !/^\d{4}$/.test(newPassword)) {
 			createError = 'PINは4桁の数字で入力してください';
 			return;
@@ -68,14 +72,14 @@
 		try {
 			await db.query(
 				`INSERT INTO user {
-					user_id: <int>$user_id,
+					user_id: $user_id,
 					last_name: $last_name,
 					first_name: $first_name,
 					password: crypto::argon2::generate($password),
 					role: $role
 				}`,
 				{
-					user_id: parseInt(newUserId),
+					user_id: newUserId,
 					last_name: newLastName.trim(),
 					first_name: newFirstName.trim(),
 					password: newPassword,
@@ -285,12 +289,14 @@
 		<form onsubmit={handleCreate} class="rounded-lg border bg-white p-4 space-y-3">
 			<div class="flex gap-2">
 				<div class="w-24">
-					<label for="new-user-id" class="mb-0.5 block text-xs text-gray-500">番号 *</label>
+					<label for="new-user-id" class="mb-0.5 block text-xs text-gray-500">番号（3桁）*</label>
 					<input
 						id="new-user-id"
-						type="number"
+						type="text"
+						inputmode="numeric"
+						maxlength={3}
 						bind:value={newUserId}
-						min="1"
+						placeholder="001"
 						required
 						class="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
 					/>
