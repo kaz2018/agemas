@@ -8,6 +8,7 @@
 
 	let items = $state<Item[]>([]);
 	let loading = $state(true);
+	let errorMsg = $state('');
 	let actionLoading = $state<Record<string, boolean>>({});
 	let myWantIds = $state<Set<string>>(new Set());
 	let killLive: (() => Promise<void>) | undefined;
@@ -36,66 +37,82 @@
 	}
 
 	onMount(async () => {
-		// 初期データ: アイテム一覧 + 自分が関わるwant一覧を並行取得
-		const [itemResult, wantResult] = await Promise.all([
-			db.query<[Item[]]>(`
-				SELECT
-					*,
-					owner.last_name + owner.first_name AS owner_name
-				FROM item
-				WHERE status != 'transferred'
-				ORDER BY created_at DESC
-			`),
-			db.query<[Want[]]>('SELECT * FROM want')
-		]);
+		errorMsg = '';
 
-		const allWants = wantResult[0] ?? [];
-		const wantByItemId = new Map(allWants.map((w) => [String(w.item), w]));
+		try {
+			// 初期データ: アイテム一覧 + 自分が関わるwant一覧を並行取得
+			const [itemResult, wantResult] = await Promise.all([
+				db.query<[Item[]]>(`
+					SELECT
+						*,
+						owner.last_name + owner.first_name AS owner_name
+					FROM item
+					WHERE status != 'transferred'
+					ORDER BY created_at DESC
+				`),
+				db.query<[Want[]]>('SELECT * FROM want')
+			]);
 
-		// アイテムに希望者名を付加
-		items = (itemResult[0] ?? []).map((item) => ({
-			...item,
-			requester_name: wantByItemId.get(String(item.id))?.requester_name
-		}));
+			const allWants = wantResult[0] ?? [];
+			const wantByItemId = new Map(allWants.map((w) => [String(w.item), w]));
 
-		// 自分がほしいボタンを押したアイテムのIDセット
-		myWantIds = new Set(
-			allWants.filter((w) => String(w.requester) === auth.user?.id).map((w) => String(w.item))
-		);
+			// アイテムに希望者名を付加
+			items = (itemResult[0] ?? []).map((item) => ({
+				...item,
+				requester_name: wantByItemId.get(String(item.id))?.requester_name
+			}));
 
-		loading = false;
+			// 自分がほしいボタンを押したアイテムのIDセット
+			myWantIds = new Set(
+				allWants.filter((w) => String(w.requester) === auth.user?.id).map((w) => String(w.item))
+			);
+		} catch (err) {
+			errorMsg = err instanceof Error ? `一覧の取得に失敗しました: ${err.message}` : '一覧の取得に失敗しました';
+			items = [];
+			myWantIds = new Set();
+			return;
+		} finally {
+			loading = false;
+		}
 
-		// Live Query: リアルタイム更新
-		const sub = await db.live<Item>(new Table('item'));
-		killLive = () => sub.kill();
+		try {
+			// Live Query: リアルタイム更新
+			const sub = await db.live<Item>(new Table('item'));
+			killLive = () => sub.kill();
 
-		(async () => {
-			for await (const msg of sub) {
-				if (msg.action === 'CREATE') {
-					const newItem = msg.value as Item;
-					if (newItem.status !== 'transferred') {
-						items = [newItem, ...items];
-					}
-				} else if (msg.action === 'UPDATE') {
-					const updated = msg.value as Item;
-					if (updated.status === 'transferred') {
-						items = items.filter((i) => i.id !== updated.id);
-					} else {
-						// available に戻ったら myWantIds から除外
-						if (updated.status === 'available') {
-							const newSet = new Set(myWantIds);
-							newSet.delete(String(updated.id));
-							myWantIds = newSet;
+			(async () => {
+				for await (const msg of sub) {
+					if (msg.action === 'CREATE') {
+						const newItem = msg.value as Item;
+						if (newItem.status !== 'transferred') {
+							items = [newItem, ...items];
 						}
-						// JOINフィールドを補完して更新
-						const enriched = await enrichItemWithRequester(updated);
-						items = items.map((i) => (i.id === updated.id ? enriched : i));
+					} else if (msg.action === 'UPDATE') {
+						const updated = msg.value as Item;
+						if (updated.status === 'transferred') {
+							items = items.filter((i) => i.id !== updated.id);
+						} else {
+							// available に戻ったら myWantIds から除外
+							if (updated.status === 'available') {
+								const newSet = new Set(myWantIds);
+								newSet.delete(String(updated.id));
+								myWantIds = newSet;
+							}
+							// JOINフィールドを補完して更新
+							const enriched = await enrichItemWithRequester(updated);
+							items = items.map((i) => (i.id === updated.id ? enriched : i));
+						}
+					} else if (msg.action === 'DELETE') {
+						items = items.filter((i) => i.id !== String(msg.recordId));
 					}
-				} else if (msg.action === 'DELETE') {
-					items = items.filter((i) => i.id !== String(msg.recordId));
 				}
-			}
-		})();
+			})();
+		} catch (err) {
+			errorMsg =
+				err instanceof Error
+					? `一覧は表示していますが、リアルタイム更新を開始できませんでした: ${err.message}`
+					: '一覧は表示していますが、リアルタイム更新を開始できませんでした';
+		}
 	});
 
 	onDestroy(() => {
@@ -185,6 +202,8 @@
 <main class="mx-auto max-w-2xl px-4 py-6">
 	{#if loading}
 		<p class="text-center text-gray-400">読み込み中...</p>
+	{:else if errorMsg}
+		<p class="text-center text-sm text-red-500">{errorMsg}</p>
 	{:else if items.length === 0}
 		<p class="text-center text-gray-400">出品中のアイテムはありません</p>
 	{:else}

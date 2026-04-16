@@ -270,11 +270,52 @@ interface Platform {
 
 `src/routes/login/+page.svelte` を作成する。
 
-- user_id（整数）+ PIN（4桁、`inputmode="numeric"`）の入力フォーム
+- user_id（**3桁文字列**。例: `"001"`）+ PIN（4桁、`inputmode="numeric"`）の入力フォーム
 - ログイン済みなら `$effect` でトップへリダイレクト
 - エラー時はメッセージを表示
 
-### 4-5. +layout.svelte にページガードを追加
+### 4-5. ログイン不能時の確認ログ（2026-04-16）
+
+事象:
+
+- ログイン画面からサインインできない
+- SurrealDB Cloud 上には `user` レコードが存在するのに、画面ではログインに進めない
+
+原因:
+
+- フロントエンドは `user_id` を **3桁数字文字列**（例: `"001"`）として扱っている
+- 一方、DB には `user_id: "testuser01"` のような旧データが残っていた
+- この値はログイン画面の `^\d{3}$` バリデーションに合致しないため、DB の認証処理まで到達しなかった
+
+確認に使った SurrealQL:
+
+```sql
+USE NAMESPACE agemas;
+USE DATABASE main;
+
+SELECT id, user_id, last_name, first_name, role
+FROM user
+ORDER BY user_id ASC;
+```
+
+対処:
+
+- 管理者ユーザーの `user_id` を `"001"` に統一
+- 必要に応じて PIN も再設定
+
+```sql
+UPDATE user:l8kqnlmqgy20ka8b8a9d SET
+  user_id = "001",
+  password = crypto::argon2::generate("1234");
+```
+
+再発防止:
+
+- `user_id` は **必ず3桁文字列**（`"001"` 形式）で登録する
+- `testuser01` や `1` のような旧形式は使わない
+- 作成済みデータに旧形式が混ざっていないか、初期セットアップ後に `SELECT id, user_id FROM user;` で確認する
+
+### 4-6. +layout.svelte にページガードを追加
 
 `onMount` で `initAuth()` を呼び出し、`$effect` で未ログイン時に `/login` にリダイレクト。セッション復元中はローディング表示。
 
@@ -316,6 +357,12 @@ onMount(async () => {
 
 onDestroy(() => { killLive?.(); });
 ```
+
+**初期ロード失敗時のハンドリング:**
+
+- `item` / `want` テーブルが未作成だと初期クエリが失敗する
+- `onMount` 内の初期取得は `try/catch/finally` で囲み、失敗時も `loading = false` を必ず実行する
+- 失敗時は「読み込み中...」のままにせず、画面にエラーメッセージを表示する
 
 **Live Query のメッセージ処理:**
 - `action === 'CREATE'` → リストに追加
@@ -519,7 +566,7 @@ USE DATABASE main;
 
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
-    FOR select WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE
     FOR create WHERE $auth.role = 'admin'
     FOR update WHERE id = $auth.id OR $auth.role = 'admin'
     FOR delete WHERE $auth.role = 'admin';
@@ -534,7 +581,7 @@ DEFINE TABLE user SCHEMAFULL
 
 ```sql
 INSERT INTO user {
-  user_id: 1,
+  user_id: "001",
   last_name: "（姓）",
   first_name: "（名）",
   password: crypto::argon2::generate("1234"),
@@ -552,7 +599,7 @@ INSERT INTO user {
 - **ユーザー一覧**: user_id・姓名・ロール表示
 - **ユーザー編集（インライン）**: 姓・名・PIN（空白なら変更なし）・ロール変更
 - **ユーザー削除**: 自分自身は削除不可（`user.id !== auth.user?.id` でガード）
-- **ユーザー作成フォーム**: user_id（整数）・姓・名・PIN・ロール
+- **ユーザー作成フォーム**: user_id（3桁文字列）・姓・名・PIN・ロール
 
 **管理者ガード（onMount）**:
 
@@ -571,17 +618,17 @@ onMount(async () => {
 ```ts
 await db.query(
   `INSERT INTO user {
-    user_id: <int>$user_id,
+    user_id: $user_id,
     last_name: $last_name,
     first_name: $first_name,
     password: crypto::argon2::generate($password),
     role: $role
   }`,
-  { user_id: parseInt(newUserId), last_name, first_name, password, role }
+  { user_id: newUserId, last_name, first_name, password, role }
 );
 ```
 
-> **注意:** `<int>$user_id` のキャスト構文が必要。`$user_id` を number で渡しても SurrealDB が float として扱う場合があるため。
+> **注意:** `user_id` は DB 設計・ログイン画面ともに **3桁文字列** 前提。`1` や `testuser01` のような別形式を混在させるとログイン不能の原因になる。
 
 **パスワードリセットクエリ**:
 

@@ -13,7 +13,7 @@ USE DATABASE main;
 --   未認証コンテキストで実行されるため、これがないとレコードを取得できない
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
-    FOR select WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE
     FOR create WHERE $auth.role = 'admin'
     FOR update WHERE id = $auth.id OR $auth.role = 'admin'
     FOR delete WHERE $auth.role = 'admin';
