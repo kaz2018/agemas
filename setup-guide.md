@@ -727,14 +727,23 @@ USE DATABASE main;
 
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
-    FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE
+    FOR select WHERE $auth.id != NONE OR $auth = NONE
     FOR create WHERE $auth.role = 'admin'
     FOR update WHERE id = $auth.id OR $auth.role = 'admin'
     FOR delete WHERE $auth.role = 'admin';
+
+DEFINE FIELD password ON user TYPE string
+  PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE;
 ```
 
 > **注意:** `DEFINE TABLE ... PERMISSIONS` は上書き定義なので、全権限を再度列挙する。  
 > `FOR create` を追加した場合、既存の `FOR select`・`FOR update`・`FOR delete` も含めて書くこと。
+>
+> `FOR select` を「ログイン済みなら誰でも可」に開いているのは、トップ画面の一覧クエリで
+> `owner.last_name + owner.first_name` のように他人の user レコードを参照するため。
+> 機密フィールド（`password`）はフィールド単位の `PERMISSIONS` で本人/admin のみに制限する
+> （SurrealDB のフィールド権限はテーブル権限を緩和できないため、この方向で書く）。
+> 詳しくは `db-design.md` の「フィールド権限はテーブル権限を緩和できない」セクション参照。
 
 ### 8-2. 管理者ユーザー作成（初回のみ）
 
@@ -817,6 +826,58 @@ await db.query(
 
 ---
 
-## Step 9: Cloudflare Pages デプロイ
+## Step 9: 他ユーザー表示名取得のための権限修正（既存インスタンス向け）
+
+### 背景
+
+トップ画面の一覧クエリは `owner.last_name + owner.first_name AS owner_name` のように
+他人の `user` レコードを辿って表示名を組み立てている。
+
+`user` テーブルの `FOR select` が「本人 or admin」のみだと他人の user レコードを読めず、
+`owner.last_name` / `owner.first_name` が `NONE` になる。
+SurrealDB は `NONE + NONE` を計算できないため一覧クエリ全体が落ちる。
+
+`want.requester` を辿る `requester.last_name + requester.first_name`（交渉中表示）も同じ。
+
+### なぜフィールド権限ではなくテーブル権限を開けるのか
+
+SurrealDB のフィールド権限は**テーブル権限で先に行がフィルタされた後**に評価される
+（[surrealdb/surrealdb#6167](https://github.com/surrealdb/surrealdb/issues/6167)）。
+つまり「テーブルは厳しめ、表示名フィールドだけ開放」は機能しない。
+そのため逆方向：「テーブルは開放、機密フィールド（`password`）だけ閉じる」で設計する。
+
+### 適用SQL（既存インスタンスのみ）
+
+新規構築では Step 2 / Step 8-1 の DDL に既に反映済みのため不要。
+既に古いスキーマで運用しているインスタンスのみ、SurrealDB Cloud の「Run queries」で実行する。
+
+```sql
+USE NAMESPACE agemas;
+USE DATABASE main;
+
+DEFINE TABLE OVERWRITE user SCHEMAFULL
+  PERMISSIONS
+    FOR select WHERE $auth.id != NONE OR $auth = NONE
+    FOR create WHERE $auth.role = 'admin'
+    FOR update WHERE id = $auth.id OR $auth.role = 'admin'
+    FOR delete WHERE $auth.role = 'admin';
+
+DEFINE FIELD OVERWRITE password ON user TYPE string
+  PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE;
+```
+
+> **補足:** `DEFINE TABLE OVERWRITE` は table-level の設定（schema mode・permissions）のみ
+> を置き換え、既存のフィールド定義は保持される。
+> `password` の `OR $auth = NONE` は SIGNIN（未認証）時に `crypto::argon2::compare(password, ...)`
+> がフィールドを参照するため必須。
+
+### 動作確認
+
+ユーザー001で出品 → ユーザー002でログイン → トップ画面でその出品が表示され、
+「出品者: 〇〇〇〇」も正しく描画されることを確認する。
+
+---
+
+## Step 10: Cloudflare Pages デプロイ
 
 （実施後に追記）

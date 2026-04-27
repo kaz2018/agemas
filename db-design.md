@@ -9,11 +9,15 @@ USE NAMESPACE agemas;
 USE DATABASE main;
 
 -- user テーブル
--- ※ SELECT に `OR $auth = NONE` を追加: DEFINE ACCESS の SIGNIN クエリは
---   未認証コンテキストで実行されるため、これがないとレコードを取得できない
+-- ※ SELECT は「ログイン済みなら誰でも可」に開放（item.owner / want.requester を
+--   名前連結する一覧クエリで他人の user レコードを読む必要があるため）。
+--   `OR $auth = NONE` は DEFINE ACCESS の SIGNIN クエリ（未認証コンテキスト）用。
+-- ※ 機密フィールド（password）はフィールド単位の PERMISSIONS で本人/admin のみに制限。
+--   SurrealDB のフィールド権限はテーブル権限を緩和できないため、
+--   「テーブル開放 → 機密フィールドだけ閉じる」の方向で設計する必要がある。
 DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
-    FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE
+    FOR select WHERE $auth.id != NONE OR $auth = NONE
     FOR create WHERE $auth.role = 'admin'
     FOR update WHERE id = $auth.id OR $auth.role = 'admin'
     FOR delete WHERE $auth.role = 'admin';
@@ -21,7 +25,8 @@ DEFINE TABLE user SCHEMAFULL
 DEFINE FIELD user_id    ON user TYPE string;   -- 3桁ゼロ埋め文字列（例: "001"）
 DEFINE FIELD last_name  ON user TYPE string;   -- 姓（ひらがな、表示用）
 DEFINE FIELD first_name ON user TYPE string;   -- 名（ひらがな、表示用）
-DEFINE FIELD password   ON user TYPE string;   -- argon2ハッシュ
+DEFINE FIELD password   ON user TYPE string    -- argon2ハッシュ
+  PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin' OR $auth = NONE;
 DEFINE FIELD role       ON user TYPE string DEFAULT 'user'; -- 'user' | 'admin'
 DEFINE FIELD created_at ON user TYPE datetime DEFAULT time::now();
 
@@ -207,4 +212,21 @@ DEFINE TABLE user SCHEMAFULL
   PERMISSIONS
     FOR select WHERE id = $auth.id OR $auth.role = 'admin'
     ...
+```
+
+### フィールド権限はテーブル権限を緩和できない
+SurrealDB のフィールド権限は、**テーブル権限で先に行がフィルタされた後**に評価される。
+そのため「テーブルで他人の行を不可視にしておきつつ、特定フィールドだけ全員に開放」は不可。
+逆方向（テーブルは開放、特定フィールドだけ制限）はそのまま機能する。
+
+参考: [surrealdb/surrealdb#6167](https://github.com/surrealdb/surrealdb/issues/6167)
+
+```sql
+-- ❌ 機能しない（行がそもそも見えないので、フィールド権限を開放しても意味がない）
+DEFINE TABLE user PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin';
+DEFINE FIELD last_name ON user PERMISSIONS FOR select WHERE $auth.id != NONE;
+
+-- ✅ 機能する（行は全員見えるが、機密フィールドはフィールド権限で隠れる）
+DEFINE TABLE user PERMISSIONS FOR select WHERE $auth.id != NONE;
+DEFINE FIELD password  ON user PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin';
 ```
