@@ -230,3 +230,57 @@ DEFINE FIELD last_name ON user PERMISSIONS FOR select WHERE $auth.id != NONE;
 DEFINE TABLE user PERMISSIONS FOR select WHERE $auth.id != NONE;
 DEFINE FIELD password  ON user PERMISSIONS FOR select WHERE id = $auth.id OR $auth.role = 'admin';
 ```
+
+### 他人行を辿る JOIN クエリで `NONE + NONE` 例外
+`SELECT *, owner.last_name + owner.first_name AS owner_name FROM item` のように
+他テーブルへ辿る式を使う一覧クエリで、辿り先（`user`）の行が SELECT 権限で弾かれると
+`owner.last_name` / `owner.first_name` がどちらも `NONE` になる。
+SurrealDB は `NONE + NONE` を計算できず例外で落ち、**一覧全体が取得不能**になる。
+
+対処は次のいずれか:
+- 辿り先テーブルの SELECT 権限を緩める（本プロジェクトの選択。表示用フィールドはほぼ公開、機密フィールドのみフィールド権限で閉じる）
+- 表示名を辿り側テーブルに非正規化して保存する
+- クエリ側で `?? ''` 等のフォールバックを入れる（SurrealQL では `IF ... THEN ... ELSE ...` を使う）
+
+### 異権限境界を跨ぐ書き込みは DB Event に寄せる
+クライアント側で「自分の権限で他人の行を更新する」と permission denied で必ず失敗する。
+（例: 「ほしい」を押した非ownerが `item.status` を `negotiating` に更新しようとする）
+
+`DEFINE EVENT` 内のクエリは権限チェックなしで実行されるため、
+**異権限の副作用は Event に寄せ、クライアントは「主操作」だけ送る**設計にする。
+本プロジェクトでは `want` テーブル変更をトリガーに `item.status` を Event 側で更新している
+（`on_want_create` / `on_want_delete` / `on_item_transferred`）。
+
+### permission denied は黙殺されやすい
+クライアント側のハンドラに `try/catch` がないと、`db.query()` の `permission denied` 例外は
+unhandled rejection として開発者ツールのコンソールに出るだけで、UI 上は「クリックしても何も起きない」
+症状になる。**全 DB ハンドラに `try/catch` + ユーザー向けのエラー表示を入れる**こと。
+
+### 「Run queries」エディタの namespace/database セレクタの罠
+SurrealDB Cloud の Run queries エディタでは、スクリプト先頭の `USE NAMESPACE ... ; USE DATABASE ...;`
+よりも **画面上のセレクタの選択が優先される場合がある**（少なくとも本プロジェクト利用時に観測）。
+DDL を投入したつもりが別の namespace に入っており、検証クエリと食い違って原因究明が長引いた。
+
+DDL 実行前は **必ず以下の3行を先に流して、結果を目視確認**してから本体クエリを流すこと:
+
+```sql
+SELECT id, ns, db FROM $session;  -- 現在の ns/db を確認
+INFO FOR ROOT;                     -- 存在する namespaces を確認
+INFO FOR NS;                       -- 現 namespace 内の database を確認
+```
+
+### `DEFINE TABLE OVERWRITE` 時はフィールドも併せて再投入
+`DEFINE TABLE OVERWRITE` でテーブル設定（schema mode・permissions 等）を再定義する際、
+既存のフィールド定義の扱いはバージョンや状況で異なる可能性がある。
+**安全側に倒すため、同じバッチ内で全フィールド・インデックス・イベントも `OVERWRITE` で再定義する**:
+
+```sql
+DEFINE TABLE OVERWRITE want SCHEMAFULL PERMISSIONS ...;
+DEFINE FIELD OVERWRITE item       ON want TYPE record<item>;
+DEFINE FIELD OVERWRITE requester  ON want TYPE record<user>;
+DEFINE FIELD OVERWRITE created_at ON want TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE want_item_requester ON want FIELDS item, requester UNIQUE;
+DEFINE EVENT OVERWRITE on_want_create ON want WHEN $event = 'CREATE' THEN { ... };
+```
+
+これで「table OVERWRITE がフィールドを巻き添えにしたとしても直後に復元される」状態になる。
