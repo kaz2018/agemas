@@ -30,7 +30,7 @@
 			return;
 		}
 		// 本人チェック（権限はSurrealDB側でも保証されるが、UIでも確認）
-		if (item.owner !== auth.user?.id) {
+		if (String(item.owner) !== (auth.user ? String(auth.user.id) : null)) {
 			goto('/');
 			return;
 		}

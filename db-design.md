@@ -49,11 +49,39 @@ DEFINE TABLE want SCHEMAFULL
   PERMISSIONS
     FOR select WHERE requester = $auth.id OR item.owner = $auth.id OR $auth.role = 'admin'
     FOR create WHERE $auth.id != NONE
-    FOR delete WHERE requester = $auth.id OR $auth.role = 'admin';
+    FOR delete WHERE requester = $auth.id OR item.owner = $auth.id OR $auth.role = 'admin';
 
 DEFINE FIELD item       ON want TYPE record<item>;
 DEFINE FIELD requester  ON want TYPE record<user>;
 DEFINE FIELD created_at ON want TYPE datetime DEFAULT time::now();
+DEFINE INDEX want_item_requester ON want FIELDS item, requester UNIQUE;
+
+-- want / item の相互更新はイベントで行う
+-- event内のクエリは権限チェックなしで実行されるため、
+-- requester から item 更新、owner から want 削除の境界をDB側で安全に跨げる
+DEFINE EVENT on_want_create ON TABLE want
+  WHEN $event = 'CREATE'
+  THEN {
+    UPDATE $after.item SET status = 'negotiating', updated_at = time::now();
+  };
+
+DEFINE EVENT on_want_delete ON TABLE want
+  WHEN $event = 'DELETE'
+  THEN {
+    LET $item_id = $before.item;
+    LET $remaining = (SELECT count() AS count FROM want WHERE item = $item_id GROUP ALL)[0].count;
+
+    IF $remaining = NONE OR $remaining = 0 {
+      UPDATE $item_id SET status = 'available', updated_at = time::now()
+        WHERE status != 'transferred';
+    };
+  };
+
+DEFINE EVENT on_item_transferred ON TABLE item
+  WHEN $event = 'UPDATE' AND $before.status != 'transferred' AND $after.status = 'transferred'
+  THEN {
+    DELETE want WHERE item = $after.id;
+  };
 
 -- 認証（DEFINE SCOPE は v2 で削除、DEFINE ACCESS を使用）
 -- ログインキーは user_id（3桁文字列） + 4桁PIN
@@ -73,22 +101,42 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 | `negotiating` | 交渉中（先着1名が「ほしい」押下済み） |
 | `transferred` | 譲渡成立（非表示） |
 
-## JavaScript SDK サインイン（v3.0.0）
+## want テーブルの権限境界
+
+- `want` の作成者（requester）は自分の `want` を作成・削除できる
+- 出品者（item.owner）は自分の出品にぶら下がる `want` を削除できる
+- `item.status` の更新や `transferred` 時の `want` 掃除は DB event が担う
+
+この構成にすると、フロントは「ほしい」時に `want` を INSERT、「交渉決裂」時に `want` を DELETE、
+「譲渡成立」時に `item.status = 'transferred'` へ UPDATE するだけでよい。
+`DEFINE EVENT` 内のクエリは権限チェックなしで動くため、permission boundary をDB側で吸収できる。
+
+## Events
+
+| Event | Trigger | Action |
+|-------|---------|--------|
+| `on_want_create` | `want` CREATE | 対象 `item.status` を `negotiating` に更新 |
+| `on_want_delete` | `want` DELETE | 同じ item の want が 0 件なら `available` に戻す |
+| `on_item_transferred` | `item.status` が `transferred` へ遷移 | 関連 `want` を全削除 |
+
+## JavaScript SDK サインイン（SDK v2系 / v3サーバー対応）
+
+現在の実装（SDK v2.x）で SurrealDB v3 サーバーの `DEFINE ACCESS` にサインインする際のコード例です。
 
 ```typescript
 // ログインキーは user_id（3桁文字列） + 4桁PIN
 await db.signin({
   namespace: 'agemas',
   database: 'main',
-  access: 'user',       // v2以前は 'scope'
-  variables: {          // v2以前はフラットに渡していた
+  access: 'user',       // v3サーバーの DEFINE ACCESS 名を指定
+  variables: {          // 変数は variables オブジェクト内にまとめる
     user_id: '001',
     password: '5678',
   },
 });
 ```
 
-## バージョン別の主な変更点メモ
+## バージョン別の主な変更点メモ（サーバー v2/v3 基準）
 
 | 旧（v1） | 新（v2+） |
 |----------|-----------|
@@ -128,6 +176,19 @@ type::string(123)  -- → "123"
 
 -- ❌ 存在しない
 string::from(123)
+```
+
+### record ID を変数で渡すとき
+`UPDATE $record_id SET ...` のように文字列変数をそのまま UPDATE 対象に渡すと失敗する。
+record ID 文字列を変数で受ける場合は `type::record($record_id)` を使う:
+
+```sql
+-- ✅ 文字列 "item:xxxx" を record として扱える
+UPDATE type::record($item_id) SET status = 'transferred';
+DELETE want WHERE item = type::record($item_id);
+
+-- ❌ 文字列のままでは UPDATE 対象にできない
+UPDATE $item_id SET status = 'transferred';
 ```
 
 ### SIGNIN 時のテーブルパーミッション

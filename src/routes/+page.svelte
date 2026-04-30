@@ -26,12 +26,35 @@
 		transferred: 'bg-gray-100 text-gray-500'
 	};
 
+	function recordId(value: unknown) {
+		return String(value);
+	}
+
+	function currentUserId() {
+		return auth.user ? recordId(auth.user.id) : null;
+	}
+
+	function isOwnedByCurrentUser(item: Item) {
+		return recordId(item.owner) === currentUserId();
+	}
+
+	function getErrorMessage(err: unknown, fallback: string) {
+		return err instanceof Error ? `${fallback}: ${err.message}` : fallback;
+	}
+
+	function isDuplicateWantError(err: unknown) {
+		return (
+			err instanceof Error &&
+			err.message.includes('want_item_requester') &&
+			err.message.includes('already contains')
+		);
+	}
+
 	// wantのIDからitem ID部分を取得してitemに希望者名を付加する
 	async function enrichItemWithRequester(item: Item): Promise<Item> {
-		const idPart = String(item.id).split(':')[1];
 		const r = await db.query<[Want[]]>(
-			'SELECT requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::thing("item", $id)',
-			{ id: idPart }
+			'SELECT requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)',
+			{ itemId: recordId(item.id) }
 		);
 		return { ...item, requester_name: r[0]?.[0]?.requester_name };
 	}
@@ -54,17 +77,19 @@
 			]);
 
 			const allWants = wantResult[0] ?? [];
-			const wantByItemId = new Map(allWants.map((w) => [String(w.item), w]));
+			const wantByItemId = new Map(allWants.map((w) => [recordId(w.item), w]));
 
 			// アイテムに希望者名を付加
 			items = (itemResult[0] ?? []).map((item) => ({
 				...item,
-				requester_name: wantByItemId.get(String(item.id))?.requester_name
+				requester_name: wantByItemId.get(recordId(item.id))?.requester_name
 			}));
 
 			// 自分がほしいボタンを押したアイテムのIDセット
 			myWantIds = new Set(
-				allWants.filter((w) => String(w.requester) === auth.user?.id).map((w) => String(w.item))
+				allWants
+					.filter((w) => recordId(w.requester) === currentUserId())
+					.map((w) => recordId(w.item))
 			);
 		} catch (err) {
 			errorMsg = err instanceof Error ? `一覧の取得に失敗しました: ${err.message}` : '一覧の取得に失敗しました';
@@ -90,20 +115,22 @@
 					} else if (msg.action === 'UPDATE') {
 						const updated = msg.value as Item;
 						if (updated.status === 'transferred') {
-							items = items.filter((i) => i.id !== updated.id);
+							items = items.filter((i) => recordId(i.id) !== recordId(updated.id));
 						} else {
 							// available に戻ったら myWantIds から除外
 							if (updated.status === 'available') {
 								const newSet = new Set(myWantIds);
-								newSet.delete(String(updated.id));
+								newSet.delete(recordId(updated.id));
 								myWantIds = newSet;
 							}
 							// JOINフィールドを補完して更新
 							const enriched = await enrichItemWithRequester(updated);
-							items = items.map((i) => (i.id === updated.id ? enriched : i));
+							items = items.map((i) =>
+								recordId(i.id) === recordId(updated.id) ? enriched : i
+							);
 						}
 					} else if (msg.action === 'DELETE') {
-						items = items.filter((i) => i.id !== String(msg.recordId));
+						items = items.filter((i) => recordId(i.id) !== recordId(msg.recordId));
 					}
 				}
 			})();
@@ -124,21 +151,26 @@
 		goto('/login');
 	}
 
-	// ほしいボタン: wantレコード作成 + status を negotiating に更新
+	// ほしいボタン: wantレコード作成（status更新はDBイベントに委譲）
 	async function handleWant(itemId: string) {
-		const idPart = itemId.split(':')[1];
 		actionLoading[itemId] = true;
+		errorMsg = '';
 		try {
-			await db.query('INSERT INTO want { item: type::thing("item", $id), requester: $auth.id }', {
-				id: idPart
+			await db.query('INSERT INTO want { item: type::record($itemId), requester: $auth.id }', {
+				itemId
 			});
-			await db.query(
-				"UPDATE type::thing(\"item\", $id) SET status='negotiating', updated_at=time::now()",
-				{ id: idPart }
-			);
 			const newSet = new Set(myWantIds);
 			newSet.add(itemId);
 			myWantIds = newSet;
+		} catch (err) {
+			if (isDuplicateWantError(err)) {
+				const newSet = new Set(myWantIds);
+				newSet.add(itemId);
+				myWantIds = newSet;
+				errorMsg = 'すでに申請中です';
+			} else {
+				errorMsg = getErrorMessage(err, '申請に失敗しました');
+			}
 		} finally {
 			actionLoading[itemId] = false;
 		}
@@ -146,28 +178,27 @@
 
 	// 譲渡成立: status を transferred に更新（Live Queryが一覧から除外する）
 	async function handleTransferred(itemId: string) {
-		const idPart = itemId.split(':')[1];
 		actionLoading[itemId] = true;
+		errorMsg = '';
 		try {
-			await db.query(
-				"UPDATE type::thing(\"item\", $id) SET status='transferred', updated_at=time::now()",
-				{ id: idPart }
-			);
+			await db.query("UPDATE type::record($itemId) SET status='transferred', updated_at=time::now()", {
+				itemId
+			});
+		} catch (err) {
+			errorMsg = getErrorMessage(err, '譲渡成立の更新に失敗しました');
 		} finally {
 			actionLoading[itemId] = false;
 		}
 	}
 
-	// 交渉決裂: wantレコード削除 + status を available に戻す
+	// 交渉決裂: wantレコード削除（status更新はDBイベントに委譲）
 	async function handleNegotiationFailed(itemId: string) {
-		const idPart = itemId.split(':')[1];
 		actionLoading[itemId] = true;
+		errorMsg = '';
 		try {
-			await db.query('DELETE want WHERE item = type::thing("item", $id)', { id: idPart });
-			await db.query(
-				"UPDATE type::thing(\"item\", $id) SET status='available', updated_at=time::now()",
-				{ id: idPart }
-			);
+			await db.query('DELETE want WHERE item = type::record($itemId)', { itemId });
+		} catch (err) {
+			errorMsg = getErrorMessage(err, '交渉決裂の更新に失敗しました');
 		} finally {
 			actionLoading[itemId] = false;
 		}
@@ -233,9 +264,9 @@
 					<!-- 出品者・編集リンク -->
 					<div class="flex items-center justify-between">
 						<p class="text-xs text-gray-400">出品者: {item.owner_name ?? ''}</p>
-						{#if item.owner === auth.user?.id}
+						{#if isOwnedByCurrentUser(item)}
 							<a
-								href={`/items/${item.id.split(':')[1]}/edit`}
+								href={`/items/${recordId(item.id).split(':')[1]}/edit`}
 								class="text-xs text-blue-400 hover:underline"
 							>編集</a>
 						{/if}
@@ -243,37 +274,40 @@
 
 					<!-- ほしいボタン / ステータス操作 -->
 					<div class="mt-3 flex items-center justify-end gap-2">
-						{#if item.status === 'available' && item.owner !== auth.user?.id}
+						{#if !isOwnedByCurrentUser(item) && myWantIds.has(recordId(item.id))}
+							<span
+								class="rounded bg-yellow-100 px-4 py-1.5 text-sm font-medium text-yellow-700"
+							>
+								申請中
+							</span>
+						{:else if item.status === 'available' && !isOwnedByCurrentUser(item)}
 							<!-- ほしいボタン（自分が出品していないavailable品） -->
 							<button
-								onclick={() => handleWant(item.id)}
-								disabled={actionLoading[item.id]}
+								onclick={() => handleWant(recordId(item.id))}
+								disabled={actionLoading[recordId(item.id)]}
 								class="rounded bg-pink-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-pink-600 disabled:opacity-50"
 							>
-								{actionLoading[item.id] ? '処理中...' : 'ほしい'}
+								{actionLoading[recordId(item.id)] ? '処理中...' : 'ほしい'}
 							</button>
-						{:else if item.status === 'negotiating' && item.owner === auth.user?.id}
+						{:else if item.status === 'negotiating' && isOwnedByCurrentUser(item)}
 							<!-- 出品者向け: 希望者名 + 交渉決裂 / 譲渡成立 -->
 							{#if item.requester_name}
 								<span class="text-xs text-gray-400">希望者: {item.requester_name}</span>
 							{/if}
 							<button
-								onclick={() => handleNegotiationFailed(item.id)}
-								disabled={actionLoading[item.id]}
+								onclick={() => handleNegotiationFailed(recordId(item.id))}
+								disabled={actionLoading[recordId(item.id)]}
 								class="rounded border border-gray-300 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
 							>
-								{actionLoading[item.id] ? '処理中...' : '交渉決裂'}
+								{actionLoading[recordId(item.id)] ? '処理中...' : '交渉決裂'}
 							</button>
 							<button
-								onclick={() => handleTransferred(item.id)}
-								disabled={actionLoading[item.id]}
+								onclick={() => handleTransferred(recordId(item.id))}
+								disabled={actionLoading[recordId(item.id)]}
 								class="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
 							>
-								{actionLoading[item.id] ? '処理中...' : '譲渡成立'}
+								{actionLoading[recordId(item.id)] ? '処理中...' : '譲渡成立'}
 							</button>
-						{:else if item.status === 'negotiating' && myWantIds.has(item.id)}
-							<!-- 自分がほしいを押した: 申請済み表示 -->
-							<span class="text-xs font-medium text-yellow-600">申請中...</span>
 						{/if}
 					</div>
 				</div>

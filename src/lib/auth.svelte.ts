@@ -18,7 +18,16 @@ export const auth = $state<{ user: AuthUser | null; loading: boolean }>({
 // $auth レコードを取得するヘルパー
 async function fetchAuthUser(): Promise<AuthUser | null> {
 	const result = await db.query<[AuthUser[]]>('SELECT * FROM $auth');
-	return result[0]?.[0] ?? null;
+	const user = result[0]?.[0];
+
+	if (!user) {
+		return null;
+	}
+
+	return {
+		...user,
+		id: String(user.id)
+	};
 }
 
 // アプリ起動時: 接続は行わず loading を解除するだけ
