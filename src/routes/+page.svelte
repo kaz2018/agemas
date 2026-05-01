@@ -26,6 +26,14 @@
     transferred: "bg-gray-100 text-gray-500",
   };
 
+  const buyerContactMessage =
+    "次はご自分のLINEやメールなどで出品者とやりとりしてください。";
+  const buyerResolutionMessage =
+    "お話がまとまりましたら、出品者側で「あげる」または「キャンセル」を押して結果が反映されます。";
+  const sellerContactMessage = "次はLINEやメールなどでやりとりしてください。";
+  const sellerResolutionMessage =
+    "譲ることが決まったら「あげる」、見送る場合は「キャンセル」を押してください。";
+
   function recordId(value: unknown) {
     return String(value);
   }
@@ -234,7 +242,9 @@
 
 <!-- ヘッダー -->
 <header class="border-b bg-white px-4 py-3 shadow-sm">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+  <div
+    class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"
+  >
     <h1 class="text-lg font-bold text-gray-800">おさがり交換</h1>
     <div class="flex items-center gap-3">
       <span class="text-sm text-gray-500">
@@ -277,7 +287,7 @@
         >
           <div class="relative aspect-[3/4] w-full bg-gray-50">
             <span
-              class={`absolute right-3 top-3 z-10 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm ${statusColor[item.status]}`}
+              class={`absolute top-3 right-3 z-10 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm ${statusColor[item.status]}`}
             >
               {statusLabel[item.status]}
             </span>
@@ -286,7 +296,7 @@
               <img
                 src={`/api/images/${item.images[0]}`}
                 alt={item.title}
-                class="h-full w-full p-3 object-contain"
+                class="h-full w-full object-contain p-3"
               />
             {:else}
               <div
@@ -303,7 +313,7 @@
                 <h2 class="text-base font-semibold text-gray-800">
                   {item.title}
                 </h2>
-                <p class="mt-1 text-sm text-gray-600 line-clamp-3">
+                <p class="mt-1 line-clamp-3 text-sm text-gray-600">
                   {item.description}
                 </p>
               </div>
@@ -316,18 +326,26 @@
               {/if}
             </div>
 
-            <div class="space-y-1 text-xs text-gray-400">
+            <div class="space-y-2 text-xs text-gray-400">
               <p>出品者: {item.owner_name ?? ""}</p>
               {#if item.status === "negotiating" && isOwnedByCurrentUser(item) && (item.requester_user_id || item.requester_name)}
-                <p class="rounded-xl bg-yellow-50 px-2 py-1 text-yellow-700">
-                  希望者:
-                  {#if item.requester_user_id}{item.requester_user_id}{/if}
-                  {#if item.requester_name}
-                    {item.requester_user_id
-                      ? `（${item.requester_name}）`
-                      : item.requester_name}
-                  {/if}
-                </p>
+                <div
+                  class="space-y-1 rounded-2xl bg-yellow-50 px-3 py-2 text-yellow-800"
+                >
+                  <p class="font-medium">
+                    {#if item.requester_user_id || item.requester_name}
+                      {#if item.requester_user_id}{item.requester_user_id}{/if}
+                      {#if item.requester_name}
+                        {item.requester_user_id
+                          ? `（${item.requester_name}）`
+                          : item.requester_name}
+                      {/if}
+                    {/if}
+                    さんがほしい申請中です。
+                  </p>
+                  <p>{sellerContactMessage}</p>
+                  <p>{sellerResolutionMessage}</p>
+                </div>
               {/if}
             </div>
 
@@ -335,11 +353,13 @@
               <!-- ほしいボタン / ステータス操作 -->
               <div class="flex flex-col gap-2">
                 {#if !isOwnedByCurrentUser(item) && myWantIds.has(recordId(item.id))}
-                  <span
-                    class="rounded-xl bg-yellow-100 px-4 py-2 text-center text-sm font-medium text-yellow-700"
+                  <div
+                    class="rounded-2xl bg-yellow-50 px-4 py-3 text-sm text-yellow-800"
                   >
-                    申請中
-                  </span>
+                    <p class="font-medium">ほしい申請しました。</p>
+                    <p class="mt-1">{buyerContactMessage}</p>
+                    <p class="mt-1">{buyerResolutionMessage}</p>
+                  </div>
                 {:else if item.status === "available" && !isOwnedByCurrentUser(item)}
                   <!-- ほしいボタン（自分が出品していないavailable品） -->
                   <button
@@ -350,7 +370,7 @@
                     {actionLoading[recordId(item.id)] ? "処理中..." : "ほしい"}
                   </button>
                 {:else if item.status === "negotiating" && isOwnedByCurrentUser(item)}
-                  <!-- 出品者向け: 交渉決裂 / 譲渡成立 -->
+                  <!-- 出品者向け: キャンセル / あげる -->
                   <div class="grid grid-cols-2 gap-2">
                     <button
                       onclick={() => handleNegotiationFailed(recordId(item.id))}
@@ -359,7 +379,7 @@
                     >
                       {actionLoading[recordId(item.id)]
                         ? "処理中..."
-                        : "交渉決裂"}
+                        : "キャンセル"}
                     </button>
                     <button
                       onclick={() => handleTransferred(recordId(item.id))}
@@ -368,7 +388,7 @@
                     >
                       {actionLoading[recordId(item.id)]
                         ? "処理中..."
-                        : "譲渡成立"}
+                        : "あげる"}
                     </button>
                   </div>
                 {/if}

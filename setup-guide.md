@@ -460,7 +460,7 @@ onDestroy(() => {
 
 - SurrealDB SDK の `id` / `owner` / `requester` は `RecordId` オブジェクトで返ることがある
 - UI 条件分岐では **両辺を `String(...)` で正規化** してから比較する
-- 片側だけ文字列化すると、出品者なのに `編集` や `交渉決裂` / `譲渡成立` が表示されない不具合になる
+- 片側だけ文字列化すると、出品者なのに `編集` や `キャンセル` / `あげる` が表示されない不具合になる
 
 ```ts
 function recordId(value: unknown) {
@@ -706,46 +706,64 @@ function isDuplicateWantError(err: unknown) {
 #### UI: ほしいボタン / ステータス操作
 
 各アイテムカードの下部に条件分岐でボタンを表示する。
-交渉中かつ出品者本人のカードでは、希望者を `002（やまだはなこ）` の形式で表示する。
+交渉中かつ出品者本人のカードでは、希望者を `002（やまだはなこ）` の形式で表示し、
+「次はLINEやメールなどでやりとりする」「最後に出品者が結果ボタンを押す」という役割分担も併記する。
+また、希望者側の `申請中` 表示は短いラベルだけにせず、外部連絡と出品者の確定操作が必要だと分かる説明文にする。
 
 ```svelte
-<div class="mt-3 flex items-center justify-end gap-2">
+<div class="flex flex-col gap-2">
   {#if String(item.owner) !== String(auth.user?.id) && myWantIds.has(String(item.id))}
-    <span class="rounded bg-yellow-100 px-4 py-1.5 text-sm font-medium text-yellow-700">
-      申請中
-    </span>
+    <div class="rounded-2xl bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+      <p class="font-medium">ほしい申請しました。</p>
+      <p class="mt-1">
+        次はご自分のLINEやメールなどで出品者とやりとりしてください。
+      </p>
+      <p class="mt-1">
+        お話がまとまりましたら、出品者側で「あげる」または「キャンセル」を押して結果が反映されます。
+      </p>
+    </div>
 
   {:else if item.status === 'available' && String(item.owner) !== String(auth.user?.id)}
     <!-- ほしいボタン（自分が出品していないavailable品） -->
     <button onclick={() => handleWant(String(item.id))}>ほしい</button>
 
   {:else if item.status === 'negotiating' && String(item.owner) === String(auth.user?.id)}
-    <!-- 出品者向け: 希望者ID/名前 + 交渉決裂 / 譲渡成立 -->
+    <!-- 出品者向け: 希望者ID/名前 + 案内 + キャンセル / あげる -->
     {#if item.requester_user_id || item.requester_name}
-      <span>
-        希望者:
-        {#if item.requester_user_id}{item.requester_user_id}{/if}
-        {#if item.requester_name}
-          {item.requester_user_id ? `（${item.requester_name}）` : item.requester_name}
-        {/if}
-      </span>
+      <div class="space-y-1 rounded-2xl bg-yellow-50 px-3 py-2 text-yellow-800">
+        <p class="font-medium">
+          {#if item.requester_user_id}{item.requester_user_id}{/if}
+          {#if item.requester_name}
+            {item.requester_user_id ? `（${item.requester_name}）` : item.requester_name}
+          {/if}
+          さんがほしい申請中です。
+        </p>
+        <p>次はLINEやメールなどでやりとりしてください。</p>
+        <p>譲ることが決まったら「あげる」、見送る場合は「キャンセル」を押してください。</p>
+      </div>
     {/if}
-    <button onclick={() => handleNegotiationFailed(String(item.id))}>交渉決裂</button>
-    <button onclick={() => handleTransferred(String(item.id))}>譲渡成立</button>
+    <button onclick={() => handleNegotiationFailed(String(item.id))}>キャンセル</button>
+    <button onclick={() => handleTransferred(String(item.id))}>あげる</button>
   {/if}
 </div>
 ```
+
+#### 文言設計の補足
+
+- トーストや一時メッセージだけに頼らず、カード内に残る案内にする
+- 希望者側は「申請したあと自分で連絡する」、出品者側は「最後に結果を確定する」をそれぞれ明示する
+- ボタン名は状態名（`交渉決裂` / `譲渡成立`）より、行動を表す `キャンセル` / `あげる` のほうが直感的
 
 ### ステータス遷移まとめ
 
 | 操作             | 前            | 後            | 誰が操作 |
 | ---------------- | ------------- | ------------- | -------- |
 | ほしいボタン押下 | `available`   | `negotiating` | 非出品者 |
-| 譲渡成立ボタン   | `negotiating` | `transferred` | 出品者   |
-| 交渉決裂ボタン   | `negotiating` | `available`   | 出品者   |
+| あげるボタン     | `negotiating` | `transferred` | 出品者   |
+| キャンセルボタン | `negotiating` | `available`   | 出品者   |
 
 - `transferred` になったアイテムは一覧から非表示（SurrealDB のパーミッションでも `status != 'transferred'` でブロック）
-- `交渉決裂` 時は `DELETE want WHERE item = ...` で want レコードも削除する
+- `キャンセル` 時は `DELETE want WHERE item = ...` で want レコードも削除する
 
 ---
 
