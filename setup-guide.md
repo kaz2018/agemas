@@ -524,6 +524,8 @@ function isOwnedByCurrentUser(item: Item) {
 - 画像は `/api/upload` に POST → R2キーを取得
 - SurrealDB への登録は `db.query('INSERT INTO item { owner: $auth.id, ... }')`
 - `owner` は `$auth.id`（サーバー側で設定されるため安全）
+- 画像とタイトルは必須にし、**両方が揃うまで送信ボタンを disabled にする**
+- 送信ボタンの活性条件とは別に、`handleSubmit()` 内でも画像未選択・タイトル未入力をチェックしてエラーメッセージを返す
 
 ### 6-2. 出品編集・削除（/items/[id]/edit）
 
