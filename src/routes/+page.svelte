@@ -278,7 +278,7 @@
             <img
               src={`/api/images/${item.images[0]}`}
               alt={item.title}
-              class="mb-3 h-48 w-full rounded object-cover"
+              class="mb-3 h-48 w-full rounded bg-gray-50 object-contain"
             />
           {/if}
 

@@ -473,6 +473,21 @@ function isOwnedByCurrentUser(item: Item) {
 }
 ```
 
+**一覧画像の表示:**
+
+- カード画像を `h-48 w-full` の固定枠で見せる場合、`object-cover` だとスマホの縦長写真がPCで左右または上下に切り抜かれる
+- 画像全体を見せたい一覧では `bg-gray-50 object-contain` を使う
+
+```svelte
+<img
+  src={`/api/images/${item.images[0]}`}
+  alt={item.title}
+  class="mb-3 h-48 w-full rounded bg-gray-50 object-contain"
+/>
+```
+
+余白が見えるのは仕様だが、縦長・横長どちらの写真でも全体が確認できる。
+
 ---
 
 ## Step 6: 出品作成・編集・削除機能実装
