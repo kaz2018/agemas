@@ -952,6 +952,9 @@ const result = await db.query<[Item[]]>(
 );
 ```
 
+> **注意:** SurrealDB の `id` は画面側では文字列ではなく `RecordId` オブジェクトで返ることがある。  
+> 管理画面で `/items/[id]/edit` のリンク生成やローディング状態のキーに使う前に、`String(item.id)` で文字列化してから `split(':')` する。
+
 **投稿削除クエリ（関連 want を先に削除）**:
 
 ```ts

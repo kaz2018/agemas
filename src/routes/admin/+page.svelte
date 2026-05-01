@@ -46,8 +46,13 @@
 		transferred: 'bg-gray-100 text-gray-500'
 	};
 
-	function recordKey(recordId: string) {
-		return recordId.split(':')[1] ?? recordId;
+	function recordId(value: unknown) {
+		return String(value);
+	}
+
+	function recordKey(value: unknown) {
+		const id = recordId(value);
+		return id.split(':')[1] ?? id;
 	}
 
 	function formatDate(value: string) {
@@ -91,7 +96,11 @@
 				FROM item
 				ORDER BY created_at DESC`
 			);
-			items = result[0] ?? [];
+			items = (result[0] ?? []).map((item) => ({
+				...item,
+				id: recordId(item.id),
+				owner: recordId(item.owner)
+			}));
 		} catch (err) {
 			itemError = err instanceof Error ? err.message : '投稿一覧の取得に失敗しました';
 		} finally {
@@ -464,11 +473,11 @@
 									編集
 								</a>
 								<button
-									onclick={() => handleItemDelete(item.id, item.title)}
-									disabled={itemActionLoading[item.id]}
+									onclick={() => handleItemDelete(recordId(item.id), item.title)}
+									disabled={itemActionLoading[recordId(item.id)]}
 									class="text-xs text-red-400 hover:underline disabled:opacity-50"
 								>
-									{itemActionLoading[item.id] ? '削除中...' : '削除'}
+									{itemActionLoading[recordId(item.id)] ? '削除中...' : '削除'}
 								</button>
 							</div>
 						</div>
