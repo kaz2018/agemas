@@ -10,6 +10,11 @@ __pycache__/
 node_modules/
 .svelte-kit/
 build/
+.wrangler/
 
 # OS
 .DS_Store
+
+# ローカル作業ファイル
+.claude/
+history.txt

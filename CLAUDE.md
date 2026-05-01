@@ -32,6 +32,20 @@
    - ステップ完了時にその変更をまとめて1コミットにする
    - コミットメッセージは英語で変更内容を簡潔に記述する
 
+## SurrealDB へのクエリ実行
+
+プロジェクトルートの `surql.sh` を使って Claude Code から直接クエリを実行できる。
+
+```bash
+./surql.sh "SELECT * FROM user LIMIT 5"
+./surql.sh "INFO FOR DB"
+./surql.sh "SELECT * FROM item WHERE status = 'available'"
+```
+
+- 認証情報（endpoint / user / pass）は `~/.claude/settings.json` の `env` に設定済み
+- namespace / database はプロジェクトの `.env` から読み込む（`SURREALDB_NS=agemas`, `SURREALDB_DB=main`）
+- セミコロンで複数ステートメントを連結可能: `./surql.sh "USE NS agemas; SELECT * FROM user"`
+
 ## 要件・DB設計
 
 - `requirements.md` を参照
