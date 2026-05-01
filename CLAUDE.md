@@ -5,19 +5,20 @@
 **SvelteKit / Svelte / SurrealDB など、バージョンアップが頻繁なライブラリのコマンドやAPIを実行する前に、必ず最新の公式ドキュメントをWebで確認してから実行すること。**
 
 - SvelteKitはバージョンによってコマンド・設定ファイルの書き方が大きく変わる（例: adapter設定、routing規則、`+layout.ts` の扱いなど）
-- SurrealDBはv1→v2→v3でSDKのAPIが変更されている（`DEFINE SCOPE` → `DEFINE ACCESS`、`scope:` → `access:` など）
+- SurrealDBはv1→v2→v3でSDK/APIが変更されている（旧認証宣言、旧signin引数名、旧record生成関数など）
 - 古い書き方・非推奨な記法になっていないか確認してから提示・実行する
+- 実装後は `npm run check:surreal-compat` を実行し、旧SurrealDB記法の混入を必ず検出する
 
 ## 技術スタック
 
-| レイヤー | 技術 |
-|----------|------|
+| レイヤー | 技術                                    |
+| -------- | --------------------------------------- |
 | Frontend | SvelteKit（SPA mode）+ Svelte 5 (runes) |
-| Database | SurrealDB Cloud |
-| Storage | Cloudflare R2（画像） |
-| Hosting | Cloudflare Pages |
-| Adapter | @sveltejs/adapter-cloudflare |
-| CSS | Tailwind CSS v4 |
+| Database | SurrealDB Cloud                         |
+| Storage  | Cloudflare R2（画像）                   |
+| Hosting  | Cloudflare Pages                        |
+| Adapter  | @sveltejs/adapter-cloudflare            |
+| CSS      | Tailwind CSS v4                         |
 
 ## 各ステップ完了時のルール
 

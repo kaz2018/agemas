@@ -125,8 +125,11 @@ build/
 ### 1-8. 動作確認
 
 ```bash
+npm run check:surreal-compat  # src/・CLAUDE.md・setup-guide.md に旧SurrealDB記法が混入していないこと
 npm run check  # 0 ERRORS であること
 ```
+
+> **注意:** `npm run check` は `npm run check:surreal-compat` を内包する。SurrealDB の旧記法が混ざると型チェックの前に失敗する。
 
 ---
 
@@ -319,7 +322,7 @@ interface Platform {
 
 > **注意:** surrealdb v2 には `db.info()` がない。`SELECT * FROM $auth` でログインユーザーを取得する。
 
-> **注意:** `db.signin()` の引数は `access:` （v1の`scope:`ではない）、変数は `variables: {}` でネストする。
+> **注意:** `db.signin()` の引数は旧版の signin 引数名ではなく `access:` を使い、変数は `variables: {}` でネストする。
 
 > **注意:** `SELECT * FROM $auth` で返る `id` は runtime 上 `RecordId` オブジェクトになることがある。
 > state に入れる前に `String(user.id)` で文字列化しておくと、`item.owner` などとの比較が安定する。
