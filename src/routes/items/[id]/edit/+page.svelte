@@ -15,41 +15,60 @@
 	let newPreviewUrls = $state<string[]>([]);
 	let submitting = $state(false);
 	let deleting = $state(false);
+	let loadingItem = $state(true);
 	let errorMsg = $state('');
+	let loadError = $state('');
 	let notFound = $state(false);
 	let ownerName = $state('');
 	let ownerUserId = $state('');
 	let adminEditingOtherUser = $state(false);
+	const hasImage = $derived(existingImages.length > 0 || newFiles.length > 0);
+	const canSubmit = $derived(!loadingItem && title.trim().length > 0 && hasImage);
 
 	onMount(async () => {
-		const result = await db.query<[Item[]]>(
-			`SELECT
-				*,
-				owner.user_id AS owner_user_id,
-				owner.last_name + owner.first_name AS owner_name
-			FROM type::thing("item", $id)`,
-			{ id: itemId }
-		);
-		const item = result[0]?.[0];
+		if (!auth.user) {
+			await goto('/login');
+			return;
+		}
 
-		if (!item) {
-			notFound = true;
-			return;
+		try {
+			const result = await db.query<[Item[]]>(
+				`SELECT
+					*,
+					owner.user_id AS owner_user_id,
+					owner.last_name + owner.first_name AS owner_name
+				FROM type::thing("item", $id)`,
+				{ id: itemId }
+			);
+			const item = result[0]?.[0];
+
+			if (!item) {
+				notFound = true;
+				return;
+			}
+
+			const currentUserId = String(auth.user.id);
+			const ownedByCurrentUser = String(item.owner) === currentUserId;
+			const isAdmin = auth.user.role === 'admin';
+
+			// 本人または管理者以外はトップへリダイレクト
+			if (!ownedByCurrentUser && !isAdmin) {
+				await goto('/');
+				return;
+			}
+
+			adminEditingOtherUser = Boolean(isAdmin && !ownedByCurrentUser);
+			title = item.title;
+			description = item.description;
+			existingImages = item.images ?? [];
+			ownerName = item.owner_name ?? '';
+			ownerUserId = item.owner_user_id ?? '';
+		} catch (err) {
+			loadError =
+				err instanceof Error ? `出品データの取得に失敗しました: ${err.message}` : '出品データの取得に失敗しました';
+		} finally {
+			loadingItem = false;
 		}
-		const currentUserId = auth.user ? String(auth.user.id) : null;
-		const ownedByCurrentUser = String(item.owner) === currentUserId;
-		const isAdmin = auth.user?.role === 'admin';
-		// 本人または管理者以外はトップへリダイレクト
-		if (!ownedByCurrentUser && !isAdmin) {
-			goto('/');
-			return;
-		}
-		adminEditingOtherUser = Boolean(isAdmin && !ownedByCurrentUser);
-		title = item.title;
-		description = item.description;
-		existingImages = item.images ?? [];
-		ownerName = item.owner_name ?? '';
-		ownerUserId = item.owner_user_id ?? '';
 	});
 
 	function handleFileChange(e: Event) {
@@ -81,6 +100,10 @@
 		e.preventDefault();
 		if (!title.trim()) {
 			errorMsg = 'タイトルを入力してください';
+			return;
+		}
+		if (!hasImage) {
+			errorMsg = '画像を1枚以上設定してください';
 			return;
 		}
 		submitting = true;
@@ -127,8 +150,12 @@
 </header>
 
 <main class="mx-auto max-w-2xl px-4 py-6">
-	{#if notFound}
+	{#if loadingItem}
+		<p class="text-center text-gray-400">出品データを読み込み中...</p>
+	{:else if notFound}
 		<p class="text-center text-gray-400">出品が見つかりません</p>
+	{:else if loadError}
+		<p class="text-center text-sm text-red-500">{loadError}</p>
 	{:else}
 		<form onsubmit={handleSubmit} class="space-y-5">
 			{#if adminEditingOtherUser}
@@ -164,7 +191,7 @@
 
 			<!-- 新規画像追加 -->
 			<div>
-				<label for="newImages" class="mb-1 block text-sm font-medium text-gray-700">画像を追加</label>
+				<label for="newImages" class="mb-1 block text-sm font-medium text-gray-700">画像 *</label>
 				<input
 					id="newImages"
 					type="file"
@@ -173,6 +200,9 @@
 					onchange={handleFileChange}
 					class="w-full text-sm text-gray-500 file:mr-3 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-1 file:text-sm file:text-blue-600"
 				/>
+				<p class="mt-1 text-xs text-gray-500">
+					現在の画像を1枚以上残すか、新しい画像を選択してください。
+				</p>
 				{#if newPreviewUrls.length > 0}
 					<div class="mt-2 flex gap-2">
 						{#each newPreviewUrls as url}
@@ -211,8 +241,8 @@
 
 			<button
 				type="submit"
-				disabled={submitting}
-				class="w-full rounded bg-blue-500 py-2 font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+				disabled={submitting || !canSubmit}
+				class="w-full rounded bg-blue-500 py-2 font-medium text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
 			>
 				{submitting ? '更新中...' : '更新する'}
 			</button>
