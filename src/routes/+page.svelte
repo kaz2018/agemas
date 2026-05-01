@@ -234,7 +234,7 @@
 
 <!-- ヘッダー -->
 <header class="border-b bg-white px-4 py-3 shadow-sm">
-  <div class="mx-auto flex max-w-2xl items-center justify-between">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
     <h1 class="text-lg font-bold text-gray-800">おさがり交換</h1>
     <div class="flex items-center gap-3">
       <span class="text-sm text-gray-500">
@@ -262,7 +262,7 @@
 </header>
 
 <!-- 出品一覧 -->
-<main class="mx-auto max-w-2xl px-4 py-6">
+<main class="mx-auto max-w-6xl px-4 py-6">
   {#if loading}
     <p class="text-center text-gray-400">読み込み中...</p>
   {:else if errorMsg}
@@ -270,65 +270,56 @@
   {:else if items.length === 0}
     <p class="text-center text-gray-400">出品中のアイテムはありません</p>
   {:else}
-    <div class="space-y-4">
+    <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {#each items as item (item.id)}
-        <div class="rounded-lg border bg-white p-4 shadow-sm">
-          <!-- 画像 -->
-          {#if item.images?.length > 0}
-            <img
-              src={`/api/images/${item.images[0]}`}
-              alt={item.title}
-              class="mb-3 h-48 w-full rounded bg-gray-50 object-contain"
-            />
-          {/if}
-
-          <!-- タイトルとステータス -->
-          <div class="mb-1 flex items-center justify-between">
-            <h2 class="font-semibold text-gray-800">{item.title}</h2>
+        <article
+          class="flex h-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm"
+        >
+          <div class="relative aspect-[3/4] w-full bg-gray-50">
             <span
-              class={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[item.status]}`}
+              class={`absolute right-3 top-3 z-10 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm ${statusColor[item.status]}`}
             >
               {statusLabel[item.status]}
             </span>
-          </div>
 
-          <!-- 説明文 -->
-          <p class="mb-2 text-sm text-gray-600 line-clamp-2">
-            {item.description}
-          </p>
-
-          <!-- 出品者・編集リンク -->
-          <div class="flex items-center justify-between">
-            <p class="text-xs text-gray-400">出品者: {item.owner_name ?? ""}</p>
-            {#if isOwnedByCurrentUser(item)}
-              <a
-                href={`/items/${recordId(item.id).split(":")[1]}/edit`}
-                class="text-xs text-blue-400 hover:underline">編集</a
+            {#if item.images?.length > 0}
+              <img
+                src={`/api/images/${item.images[0]}`}
+                alt={item.title}
+                class="h-full w-full p-3 object-contain"
+              />
+            {:else}
+              <div
+                class="flex h-full items-center justify-center text-sm text-gray-400"
               >
+                画像なし
+              </div>
             {/if}
           </div>
 
-          <!-- ほしいボタン / ステータス操作 -->
-          <div class="mt-3 flex items-center justify-end gap-2">
-            {#if !isOwnedByCurrentUser(item) && myWantIds.has(recordId(item.id))}
-              <span
-                class="rounded bg-yellow-100 px-4 py-1.5 text-sm font-medium text-yellow-700"
-              >
-                申請中
-              </span>
-            {:else if item.status === "available" && !isOwnedByCurrentUser(item)}
-              <!-- ほしいボタン（自分が出品していないavailable品） -->
-              <button
-                onclick={() => handleWant(recordId(item.id))}
-                disabled={actionLoading[recordId(item.id)]}
-                class="rounded bg-pink-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-pink-600 disabled:opacity-50"
-              >
-                {actionLoading[recordId(item.id)] ? "処理中..." : "ほしい"}
-              </button>
-            {:else if item.status === "negotiating" && isOwnedByCurrentUser(item)}
-              <!-- 出品者向け: 希望者ID/名前 + 交渉決裂 / 譲渡成立 -->
-              {#if item.requester_user_id || item.requester_name}
-                <span class="text-xs text-gray-400">
+          <div class="flex flex-1 flex-col gap-3 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h2 class="text-base font-semibold text-gray-800">
+                  {item.title}
+                </h2>
+                <p class="mt-1 text-sm text-gray-600 line-clamp-3">
+                  {item.description}
+                </p>
+              </div>
+              {#if isOwnedByCurrentUser(item)}
+                <a
+                  href={`/items/${recordId(item.id).split(":")[1]}/edit`}
+                  class="shrink-0 text-xs font-medium text-blue-500 hover:underline"
+                  >編集</a
+                >
+              {/if}
+            </div>
+
+            <div class="space-y-1 text-xs text-gray-400">
+              <p>出品者: {item.owner_name ?? ""}</p>
+              {#if item.status === "negotiating" && isOwnedByCurrentUser(item) && (item.requester_user_id || item.requester_name)}
+                <p class="rounded-xl bg-yellow-50 px-2 py-1 text-yellow-700">
                   希望者:
                   {#if item.requester_user_id}{item.requester_user_id}{/if}
                   {#if item.requester_name}
@@ -336,25 +327,55 @@
                       ? `（${item.requester_name}）`
                       : item.requester_name}
                   {/if}
-                </span>
+                </p>
               {/if}
-              <button
-                onclick={() => handleNegotiationFailed(recordId(item.id))}
-                disabled={actionLoading[recordId(item.id)]}
-                class="rounded border border-gray-300 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {actionLoading[recordId(item.id)] ? "処理中..." : "交渉決裂"}
-              </button>
-              <button
-                onclick={() => handleTransferred(recordId(item.id))}
-                disabled={actionLoading[recordId(item.id)]}
-                class="rounded bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
-              >
-                {actionLoading[recordId(item.id)] ? "処理中..." : "譲渡成立"}
-              </button>
-            {/if}
+            </div>
+
+            <div class="mt-auto">
+              <!-- ほしいボタン / ステータス操作 -->
+              <div class="flex flex-col gap-2">
+                {#if !isOwnedByCurrentUser(item) && myWantIds.has(recordId(item.id))}
+                  <span
+                    class="rounded-xl bg-yellow-100 px-4 py-2 text-center text-sm font-medium text-yellow-700"
+                  >
+                    申請中
+                  </span>
+                {:else if item.status === "available" && !isOwnedByCurrentUser(item)}
+                  <!-- ほしいボタン（自分が出品していないavailable品） -->
+                  <button
+                    onclick={() => handleWant(recordId(item.id))}
+                    disabled={actionLoading[recordId(item.id)]}
+                    class="w-full rounded-xl bg-pink-500 px-4 py-2 text-sm font-medium text-white hover:bg-pink-600 disabled:opacity-50"
+                  >
+                    {actionLoading[recordId(item.id)] ? "処理中..." : "ほしい"}
+                  </button>
+                {:else if item.status === "negotiating" && isOwnedByCurrentUser(item)}
+                  <!-- 出品者向け: 交渉決裂 / 譲渡成立 -->
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      onclick={() => handleNegotiationFailed(recordId(item.id))}
+                      disabled={actionLoading[recordId(item.id)]}
+                      class="rounded-xl border border-gray-300 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {actionLoading[recordId(item.id)]
+                        ? "処理中..."
+                        : "交渉決裂"}
+                    </button>
+                    <button
+                      onclick={() => handleTransferred(recordId(item.id))}
+                      disabled={actionLoading[recordId(item.id)]}
+                      class="rounded-xl bg-blue-500 px-3 py-2 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      {actionLoading[recordId(item.id)]
+                        ? "処理中..."
+                        : "譲渡成立"}
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            </div>
           </div>
-        </div>
+        </article>
       {/each}
     </div>
   {/if}

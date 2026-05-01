@@ -488,6 +488,31 @@ function isOwnedByCurrentUser(item: Item) {
 
 余白が見えるのは仕様だが、縦長・横長どちらの写真でも全体が確認できる。
 
+**モバイル向けの縦長カードモック:**
+
+- スマホ利用が中心なら、一覧は `space-y-*` の単純な横長カードよりも `grid` ベースの縦長カードに寄せると見やすい
+- 画像エリアを `aspect-[3/4]` にすると、子ども服や雑貨の写真をスマホで一覧しやすい
+- ステータスは画像右上に重ね、本文・出品者情報・操作ボタンは下に縦積みする
+- PCでは `sm:grid-cols-2 xl:grid-cols-3` のように列数だけ増やすと、同じカードをそのまま再利用できる
+- 列数を増やす場合は、一覧コンテナも `max-w-6xl` などに広げないとカードが十分な幅を取れない
+
+```svelte
+<div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+  <article
+    class="flex h-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm"
+  >
+    <div class="relative aspect-[3/4] w-full bg-gray-50">
+      <!-- 画像 + ステータス -->
+    </div>
+    <div class="flex flex-1 flex-col gap-3 p-4">
+      <!-- タイトル / 説明 / 出品者 / ボタン -->
+    </div>
+  </article>
+</div>
+```
+
+この構成だとモバイルでは「写真を見る → 内容を読む → ボタンを押す」の流れが自然になる。
+
 ---
 
 ## Step 6: 出品作成・編集・削除機能実装
