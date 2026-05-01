@@ -184,14 +184,14 @@
 			const idPart = recordKey(userId);
 			if (editPassword) {
 				await db.query(
-					`UPDATE type::thing("user", $id) SET
+					`UPDATE type::record("user", $id) SET
 						last_name=$last_name, first_name=$first_name,
 						password=crypto::argon2::generate($password), role=$role`,
 					{ id: idPart, last_name: editLastName.trim(), first_name: editFirstName.trim(), password: editPassword, role: editRole }
 				);
 			} else {
 				await db.query(
-					`UPDATE type::thing("user", $id) SET
+					`UPDATE type::record("user", $id) SET
 						last_name=$last_name, first_name=$first_name, role=$role`,
 					{ id: idPart, last_name: editLastName.trim(), first_name: editFirstName.trim(), role: editRole }
 				);
@@ -209,7 +209,7 @@
 		if (!confirm(`${displayName} を削除しますか？`)) return;
 		try {
 			const idPart = recordKey(userId);
-			await db.query('DELETE type::thing("user", $id)', { id: idPart });
+			await db.query('DELETE type::record("user", $id)', { id: idPart });
 			await loadUsers();
 		} catch {
 			errorMsg = '削除に失敗しました';

@@ -37,7 +37,7 @@
 					*,
 					owner.user_id AS owner_user_id,
 					owner.last_name + owner.first_name AS owner_name
-				FROM type::thing("item", $id)`,
+				FROM type::record("item", $id)`,
 				{ id: itemId }
 			);
 			const item = result[0]?.[0];
@@ -113,7 +113,7 @@
 			const images = [...existingImages, ...newKeys];
 
 			await db.query(
-				`UPDATE type::thing("item", $id)
+				`UPDATE type::record("item", $id)
 				 SET title=$title, description=$description, images=$images, updated_at=time::now()`,
 				{ id: itemId, title: title.trim(), description: description.trim(), images }
 			);
@@ -130,8 +130,8 @@
 		deleting = true;
 		try {
 			await db.query(
-				`DELETE want WHERE item = type::thing("item", $id);
-				DELETE type::thing("item", $id);`,
+				`DELETE want WHERE item = type::record("item", $id);
+				DELETE type::record("item", $id);`,
 				{ id: itemId }
 			);
 			goto('/');

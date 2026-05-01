@@ -531,11 +531,11 @@ function isOwnedByCurrentUser(item: Item) {
 
 `src/routes/items/[id]/edit/+page.svelte` を作成する。
 
-- レコード取得: `SELECT * FROM type::thing("item", $id)` でIDを安全にバインド
+- レコード取得: `SELECT * FROM type::record("item", $id)` でIDを安全にバインド
 - 初期表示中は `loadingItem` を `true` にして、取得成功後にだけフォームを表示する。取得前に空の `title` / `description` を描画しない
 - レコード取得失敗時は空フォームを出さず、`loadError` に取得失敗メッセージを表示する
-- 更新: `UPDATE type::thing("item", $id) SET ...`
-- 削除: `DELETE want WHERE item = type::thing("item", $id); DELETE type::thing("item", $id)` の順で関連 `want` を掃除してから本体を削除する
+- 更新: `UPDATE type::record("item", $id) SET ...`
+- 削除: `DELETE want WHERE item = type::record("item", $id); DELETE type::record("item", $id)` の順で関連 `want` を掃除してから本体を削除する
 - 既存画像はキーのリストで管理し、×ボタンで除外 → 新規画像と結合して保存
 - 編集画面でも画像とタイトルを必須にする。送信ボタンの活性条件は `title.trim().length > 0 && (existingImages.length > 0 || newFiles.length > 0)` にする
 - UI の disabled 条件とは別に、`handleSubmit()` 内でもタイトル未入力・画像ゼロ件を再チェックしてエラーメッセージを返す
@@ -649,7 +649,7 @@ UPDATE 時は JOINフィールド（`owner_name`, `requester_user_id`, `requeste
 async function enrichItemWithRequester(item: Item): Promise<Item> {
   const idPart = String(item.id).split(":")[1];
   const r = await db.query<[Want[]]>(
-    'SELECT requester.user_id AS requester_user_id, requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::thing("item", $id)',
+    'SELECT requester.user_id AS requester_user_id, requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::record("item", $id)',
     { id: idPart },
   );
   return {
@@ -936,7 +936,7 @@ await db.query(
 
 ```ts
 await db.query(
-  `UPDATE type::thing("user", $id) SET
+  `UPDATE type::record("user", $id) SET
     last_name=$last_name, first_name=$first_name,
     password=crypto::argon2::generate($password), role=$role`,
   { id: idPart, last_name, first_name, password, role },
