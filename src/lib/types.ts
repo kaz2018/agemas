@@ -8,6 +8,7 @@ export type Item = {
   created_at: string;
   updated_at: string;
   // JOINして取得するフィールド
+  owner_user_id?: string;
   owner_name?: string;
   requester_user_id?: string; // negotiating状態のとき希望者の会員ID
   requester_name?: string; // negotiating状態のとき希望者の名前

@@ -533,7 +533,7 @@ function isOwnedByCurrentUser(item: Item) {
 
 - レコード取得: `SELECT * FROM type::thing("item", $id)` でIDを安全にバインド
 - 更新: `UPDATE type::thing("item", $id) SET ...`
-- 削除: `DELETE type::thing("item", $id)`
+- 削除: `DELETE want WHERE item = type::thing("item", $id); DELETE type::thing("item", $id)` の順で関連 `want` を掃除してから本体を削除する
 - 既存画像はキーのリストで管理し、×ボタンで除外 → 新規画像と結合して保存
 
 **出品一覧での編集リンク:**
@@ -546,7 +546,8 @@ function isOwnedByCurrentUser(item: Item) {
 
 SurrealDB のレコードIDは `item:abc123` 形式なので `split(':')[1]` でID部分を取得。
 
-**アクセス制御:** SurrealDB のパーミッション（`owner = $auth.id`）でサーバー側でも保証される。
+**アクセス制御:** 通常ユーザーは本人のみ、管理者は他人の出品にも入れるように UI 側でも分岐する。  
+DB 側はすでに `owner = $auth.id OR $auth.role = 'admin'` で update/delete を許可している。
 
 ---
 
@@ -894,6 +895,9 @@ INSERT INTO user {
 - **ユーザー編集（インライン）**: 姓・名・PIN（空白なら変更なし）・ロール変更
 - **ユーザー削除**: 自分自身は削除不可（`user.id !== auth.user?.id` でガード）
 - **ユーザー作成フォーム**: user_id（3桁文字列）・姓・名・PIN・ロール
+- **投稿一覧**: タイトル・出品者・状態・作成日時を表示
+- **投稿編集**: 既存の `/items/[id]/edit` に遷移して管理者も編集可能
+- **投稿削除**: 管理画面から直接削除。関連 `want` を先に削除して孤児レコードを残さない
 
 **管理者ガード（onMount）**:
 
@@ -933,6 +937,41 @@ await db.query(
     password=crypto::argon2::generate($password), role=$role`,
   { id: idPart, last_name, first_name, password, role },
 );
+```
+
+**投稿一覧クエリ（出品者名をJOINして管理画面に表示）**:
+
+```ts
+const result = await db.query<[Item[]]>(
+  `SELECT
+    *,
+    owner.user_id AS owner_user_id,
+    owner.last_name + owner.first_name AS owner_name
+  FROM item
+  ORDER BY created_at DESC`,
+);
+```
+
+**投稿削除クエリ（関連 want を先に削除）**:
+
+```ts
+await db.query(
+  `DELETE want WHERE item = type::record($itemId);
+   DELETE type::record($itemId);`,
+  { itemId },
+);
+```
+
+**出品編集ページの管理者対応**:
+
+```ts
+const ownedByCurrentUser = String(item.owner) === String(auth.user?.id);
+const isAdmin = auth.user?.role === "admin";
+
+if (!ownedByCurrentUser && !isAdmin) {
+  goto("/");
+  return;
+}
 ```
 
 ### 8-4. トップページに管理リンクを追加

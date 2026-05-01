@@ -17,10 +17,17 @@
 	let deleting = $state(false);
 	let errorMsg = $state('');
 	let notFound = $state(false);
+	let ownerName = $state('');
+	let ownerUserId = $state('');
+	let adminEditingOtherUser = $state(false);
 
 	onMount(async () => {
 		const result = await db.query<[Item[]]>(
-			'SELECT * FROM type::thing("item", $id)',
+			`SELECT
+				*,
+				owner.user_id AS owner_user_id,
+				owner.last_name + owner.first_name AS owner_name
+			FROM type::thing("item", $id)`,
 			{ id: itemId }
 		);
 		const item = result[0]?.[0];
@@ -29,14 +36,20 @@
 			notFound = true;
 			return;
 		}
-		// 本人チェック（権限はSurrealDB側でも保証されるが、UIでも確認）
-		if (String(item.owner) !== (auth.user ? String(auth.user.id) : null)) {
+		const currentUserId = auth.user ? String(auth.user.id) : null;
+		const ownedByCurrentUser = String(item.owner) === currentUserId;
+		const isAdmin = auth.user?.role === 'admin';
+		// 本人または管理者以外はトップへリダイレクト
+		if (!ownedByCurrentUser && !isAdmin) {
 			goto('/');
 			return;
 		}
+		adminEditingOtherUser = Boolean(isAdmin && !ownedByCurrentUser);
 		title = item.title;
 		description = item.description;
 		existingImages = item.images ?? [];
+		ownerName = item.owner_name ?? '';
+		ownerUserId = item.owner_user_id ?? '';
 	});
 
 	function handleFileChange(e: Event) {
@@ -94,7 +107,8 @@
 		deleting = true;
 		try {
 			await db.query(
-				'DELETE type::thing("item", $id)',
+				`DELETE want WHERE item = type::thing("item", $id);
+				DELETE type::thing("item", $id);`,
 				{ id: itemId }
 			);
 			goto('/');
@@ -117,6 +131,14 @@
 		<p class="text-center text-gray-400">出品が見つかりません</p>
 	{:else}
 		<form onsubmit={handleSubmit} class="space-y-5">
+			{#if adminEditingOtherUser}
+				<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+					管理者として他ユーザーの出品を編集中です。
+					<span class="font-medium">出品者:</span>
+					{ownerUserId ? `${ownerUserId}. ` : ''}{ownerName || '不明'}
+				</div>
+			{/if}
+
 			<!-- 既存画像 -->
 			{#if existingImages.length > 0}
 				<div>

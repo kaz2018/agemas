@@ -4,12 +4,17 @@
 	import { db } from '$lib/db';
 	import { auth } from '$lib/auth.svelte';
 	import type { AuthUser } from '$lib/auth.svelte';
+	import type { Item } from '$lib/types';
 
 	type AdminUser = AuthUser & { id: string };
 
 	let users = $state<AdminUser[]>([]);
 	let loading = $state(true);
 	let errorMsg = $state('');
+	let items = $state<Item[]>([]);
+	let itemLoading = $state(true);
+	let itemError = $state('');
+	let itemActionLoading = $state<Record<string, boolean>>({});
 
 	// 新規ユーザー作成フォーム
 	let newUserId = $state('');
@@ -29,13 +34,34 @@
 	let saving = $state(false);
 	let editError = $state('');
 
+	const statusLabel: Record<Item['status'], string> = {
+		available: '募集中',
+		negotiating: '交渉中',
+		transferred: '譲渡済'
+	};
+
+	const statusColor: Record<Item['status'], string> = {
+		available: 'bg-green-100 text-green-700',
+		negotiating: 'bg-yellow-100 text-yellow-700',
+		transferred: 'bg-gray-100 text-gray-500'
+	};
+
+	function recordKey(recordId: string) {
+		return recordId.split(':')[1] ?? recordId;
+	}
+
+	function formatDate(value: string) {
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
+	}
+
 	onMount(async () => {
 		// 管理者以外はトップへリダイレクト
 		if (!auth.loading && auth.user?.role !== 'admin') {
 			goto('/');
 			return;
 		}
-		await loadUsers();
+		await Promise.all([loadUsers(), loadItems()]);
 	});
 
 	async function loadUsers() {
@@ -50,6 +76,26 @@
 			errorMsg = 'ユーザー一覧の取得に失敗しました';
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadItems() {
+		itemLoading = true;
+		itemError = '';
+		try {
+			const result = await db.query<[Item[]]>(
+				`SELECT
+					*,
+					owner.user_id AS owner_user_id,
+					owner.last_name + owner.first_name AS owner_name
+				FROM item
+				ORDER BY created_at DESC`
+			);
+			items = result[0] ?? [];
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : '投稿一覧の取得に失敗しました';
+		} finally {
+			itemLoading = false;
 		}
 	}
 
@@ -126,7 +172,7 @@
 		}
 		saving = true;
 		try {
-			const idPart = userId.split(':')[1];
+			const idPart = recordKey(userId);
 			if (editPassword) {
 				await db.query(
 					`UPDATE type::thing("user", $id) SET
@@ -150,14 +196,32 @@
 		}
 	}
 
-	async function handleDelete(userId: string, displayName: string) {
+	async function handleUserDelete(userId: string, displayName: string) {
 		if (!confirm(`${displayName} を削除しますか？`)) return;
 		try {
-			const idPart = userId.split(':')[1];
+			const idPart = recordKey(userId);
 			await db.query('DELETE type::thing("user", $id)', { id: idPart });
 			await loadUsers();
 		} catch {
 			errorMsg = '削除に失敗しました';
+		}
+	}
+
+	async function handleItemDelete(itemId: string, title: string) {
+		if (!confirm(`「${title}」を削除しますか？`)) return;
+		itemActionLoading[itemId] = true;
+		itemError = '';
+		try {
+			await db.query(
+				`DELETE want WHERE item = type::record($itemId);
+				DELETE type::record($itemId);`,
+				{ itemId }
+			);
+			await loadItems();
+		} catch (err) {
+			itemError = err instanceof Error ? err.message : '投稿の削除に失敗しました';
+		} finally {
+			itemActionLoading[itemId] = false;
 		}
 	}
 </script>
@@ -269,10 +333,10 @@
 										class="text-xs text-blue-400 hover:underline"
 									>編集</button>
 									{#if user.id !== auth.user?.id}
-										<button
-											onclick={() => handleDelete(user.id, `${user.last_name}${user.first_name}`)}
-											class="text-xs text-red-400 hover:underline"
-										>削除</button>
+									<button
+										onclick={() => handleUserDelete(user.id, `${user.last_name}${user.first_name}`)}
+										class="text-xs text-red-400 hover:underline"
+									>削除</button>
 									{/if}
 								</div>
 							</div>
@@ -361,6 +425,57 @@
 				{creating ? '作成中...' : 'ユーザーを作成'}
 			</button>
 		</form>
+	</section>
+
+	<section>
+		<h2 class="mb-3 text-base font-bold text-gray-700">投稿管理</h2>
+
+		{#if itemLoading}
+			<p class="text-sm text-gray-400">読み込み中...</p>
+		{:else if itemError}
+			<p class="text-sm text-red-500">{itemError}</p>
+		{:else if items.length === 0}
+			<p class="text-sm text-gray-400">投稿がありません</p>
+		{:else}
+			<div class="space-y-3">
+				{#each items as item (item.id)}
+					<div class="rounded-lg border bg-white p-4">
+						<div class="flex items-start justify-between gap-4">
+							<div class="min-w-0 flex-1">
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="font-medium text-gray-800">{item.title}</span>
+									<span class={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[item.status]}`}>
+										{statusLabel[item.status]}
+									</span>
+								</div>
+								<p class="mt-1 text-sm text-gray-500">
+									出品者: {item.owner_user_id ? `${item.owner_user_id}. ` : ''}{item.owner_name ?? '不明'}
+								</p>
+								<p class="mt-1 text-xs text-gray-400">作成: {formatDate(item.created_at)}</p>
+								{#if item.description}
+									<p class="mt-2 line-clamp-2 text-sm text-gray-600">{item.description}</p>
+								{/if}
+							</div>
+							<div class="flex shrink-0 gap-2">
+								<a
+									href={`/items/${recordKey(item.id)}/edit`}
+									class="text-xs text-blue-400 hover:underline"
+								>
+									編集
+								</a>
+								<button
+									onclick={() => handleItemDelete(item.id, item.title)}
+									disabled={itemActionLoading[item.id]}
+									class="text-xs text-red-400 hover:underline disabled:opacity-50"
+								>
+									{itemActionLoading[item.id] ? '削除中...' : '削除'}
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
 	</section>
 
 </main>
