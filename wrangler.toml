@@ -1,5 +1,11 @@
 name = "agemas"
-compatibility_date = "2024-01-01"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_als"]
+
+[assets]
+binding = "ASSETS"
+directory = ".svelte-kit/cloudflare"
 
 [[r2_buckets]]
 binding = "IMAGES"
