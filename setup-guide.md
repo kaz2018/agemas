@@ -656,6 +656,7 @@ function isDuplicateWantError(err: unknown) {
 #### UI: ほしいボタン / ステータス操作
 
 各アイテムカードの下部に条件分岐でボタンを表示する。
+交渉中かつ出品者本人のカードでは、希望者を `002（やまだはなこ）` の形式で表示する。
 
 ```svelte
 <div class="mt-3 flex items-center justify-end gap-2">

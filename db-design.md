@@ -110,11 +110,17 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 
 - `want` の作成者（requester）は自分の `want` を作成・削除できる
 - 出品者（item.owner）は自分の出品にぶら下がる `want` を削除できる
+- 出品者（item.owner）は自分の出品にぶら下がる `want` から `requester.user_id` / `requester.last_name` / `requester.first_name` を参照できる
 - `item.status` の更新や `transferred` 時の `want` 掃除は DB event が担う
 
 この構成にすると、フロントは「ほしい」時に `want` を INSERT、「交渉決裂」時に `want` を DELETE、
 「譲渡成立」時に `item.status = 'transferred'` へ UPDATE するだけでよい。
 `DEFINE EVENT` 内のクエリは権限チェックなしで動くため、permission boundary をDB側で吸収できる。
+
+フロントの一覧表示では `want` を読む際に
+`requester.user_id AS requester_user_id` と
+`requester.last_name + requester.first_name AS requester_name`
+を付加しておくことで、出品者側に `002（やまだはなこ）` のような形で表示できる。
 
 ## Events
 
