@@ -5,6 +5,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import type { AuthUser } from '$lib/auth.svelte';
 	import type { Item } from '$lib/types';
+	import { formatFullName } from '$lib/userName';
 
 	type AdminUser = AuthUser & { id: string };
 
@@ -60,6 +61,14 @@
 		return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
 	}
 
+	function isDuplicateFullNameError(err: unknown) {
+		return (
+			err instanceof Error &&
+			err.message.includes('user_full_name_unique') &&
+			err.message.includes('already contains')
+		);
+	}
+
 	onMount(async () => {
 		// 管理者以外はトップへリダイレクト
 		if (!auth.loading && auth.user?.role !== 'admin') {
@@ -92,7 +101,7 @@
 				`SELECT
 					*,
 					owner.user_id AS owner_user_id,
-					owner.last_name + owner.first_name AS owner_name
+					owner.last_name + ' ' + owner.first_name AS owner_name
 				FROM item
 				ORDER BY created_at DESC`
 			);
@@ -149,7 +158,11 @@
 			newRole = 'user';
 			await loadUsers();
 		} catch (err) {
-			createError = err instanceof Error ? err.message : 'ユーザーの作成に失敗しました';
+			createError = isDuplicateFullNameError(err)
+				? '同じ姓と名のユーザーは登録できません'
+				: err instanceof Error
+					? err.message
+					: 'ユーザーの作成に失敗しました';
 		} finally {
 			creating = false;
 		}
@@ -199,7 +212,11 @@
 			editingId = null;
 			await loadUsers();
 		} catch (err) {
-			editError = err instanceof Error ? err.message : '更新に失敗しました';
+			editError = isDuplicateFullNameError(err)
+				? '同じ姓と名のユーザーは登録できません'
+				: err instanceof Error
+					? err.message
+					: '更新に失敗しました';
 		} finally {
 			saving = false;
 		}
@@ -247,6 +264,7 @@
 	<!-- ユーザー一覧 -->
 	<section>
 		<h2 class="mb-3 text-base font-bold text-gray-700">ユーザー一覧</h2>
+		<p class="mb-3 text-xs text-gray-500">ログインには「姓」「名」「PIN」を使います。同姓同名は登録できません。</p>
 
 		{#if loading}
 			<p class="text-sm text-gray-400">読み込み中...</p>
@@ -330,7 +348,7 @@
 							<div class="flex items-center justify-between">
 								<div>
 									<span class="font-medium text-gray-800">
-										{user.user_id}. {user.last_name}{user.first_name}
+										{user.user_id}. {formatFullName(user.last_name, user.first_name)}
 									</span>
 									<span class={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
 										{user.role === 'admin' ? '管理者' : '一般'}
@@ -343,7 +361,7 @@
 									>編集</button>
 									{#if user.id !== auth.user?.id}
 									<button
-										onclick={() => handleUserDelete(user.id, `${user.last_name}${user.first_name}`)}
+										onclick={() => handleUserDelete(user.id, formatFullName(user.last_name, user.first_name))}
 										class="text-xs text-red-400 hover:underline"
 									>削除</button>
 									{/if}
@@ -359,6 +377,7 @@
 	<!-- ユーザー作成フォーム -->
 	<section>
 		<h2 class="mb-3 text-base font-bold text-gray-700">ユーザーを追加</h2>
+		<p class="mb-3 text-xs text-gray-500">会員番号は表示用です。ログインは「姓」「名」「PIN」で行います。</p>
 		<form onsubmit={handleCreate} class="rounded-lg border bg-white p-4 space-y-3">
 			<div class="flex gap-2">
 				<div class="w-24">

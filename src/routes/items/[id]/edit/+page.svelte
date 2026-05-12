@@ -36,7 +36,7 @@
 				`SELECT
 					*,
 					owner.user_id AS owner_user_id,
-					owner.last_name + owner.first_name AS owner_name
+					owner.last_name + ' ' + owner.first_name AS owner_name
 				FROM type::record("item", $id)`,
 				{ id: itemId }
 			);

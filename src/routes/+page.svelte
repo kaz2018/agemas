@@ -5,6 +5,7 @@
   import { auth, logout } from "$lib/auth.svelte";
   import type { Item, Want } from "$lib/types";
   import { goto } from "$app/navigation";
+  import { formatFullName } from "$lib/userName";
 
   let items = $state<Item[]>([]);
   let loading = $state(true);
@@ -61,7 +62,7 @@
   // wantから希望者ID/名前を取得してitemに付加する
   async function enrichItemWithRequester(item: Item): Promise<Item> {
     const r = await db.query<[Want[]]>(
-      "SELECT requester.user_id AS requester_user_id, requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)",
+      "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)",
       { itemId: recordId(item.id) },
     );
     return {
@@ -80,7 +81,7 @@
         db.query<[Item[]]>(`
 					SELECT
 						*,
-						owner.last_name + owner.first_name AS owner_name
+						owner.last_name + ' ' + owner.first_name AS owner_name
 					FROM item
 					WHERE status != 'transferred'
 					ORDER BY created_at DESC
@@ -89,7 +90,7 @@
 					SELECT
 						*,
 						requester.user_id AS requester_user_id,
-						requester.last_name + requester.first_name AS requester_name
+						requester.last_name + ' ' + requester.first_name AS requester_name
 					FROM want
 				`),
       ]);
@@ -248,7 +249,7 @@
     <h1 class="text-lg font-bold text-gray-800">おさがり交換</h1>
     <div class="flex items-center gap-3">
       <span class="text-sm text-gray-500">
-        {auth.user?.last_name}{auth.user?.first_name}
+        {formatFullName(auth.user?.last_name, auth.user?.first_name)}
       </span>
       <a
         href="/items/new"

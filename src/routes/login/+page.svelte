@@ -2,8 +2,10 @@
 	import { goto } from '$app/navigation';
 	import { login, auth } from '$lib/auth.svelte';
 	import { checkRateLimit, recordFailure, recordSuccess } from '$lib/rateLimit';
+	import { buildLoginKey } from '$lib/userName';
 
-	let userId = $state('');
+	let lastName = $state('');
+	let firstName = $state('');
 	let password = $state('');
 	let errorMsg = $state('');
 	let loading = $state(false);
@@ -17,9 +19,11 @@
 		e.preventDefault();
 		errorMsg = '';
 
-		// 3桁数字バリデーション（例: "001"）
-		if (!/^\d{3}$/.test(userId)) {
-			errorMsg = 'IDは3桁の数字で入力してください（例: 001）';
+		const normalizedLastName = lastName.trim();
+		const normalizedFirstName = firstName.trim();
+
+		if (!normalizedLastName || !normalizedFirstName) {
+			errorMsg = '苗字と名前を入力してください';
 			return;
 		}
 		if (!/^\d{4}$/.test(password)) {
@@ -27,8 +31,10 @@
 			return;
 		}
 
+		const loginKey = buildLoginKey(normalizedLastName, normalizedFirstName);
+
 		// レート制限チェック
-		const { allowed, remainingMs } = checkRateLimit(userId);
+		const { allowed, remainingMs } = checkRateLimit(loginKey);
 		if (!allowed) {
 			const minutes = Math.ceil((remainingMs ?? 0) / 60000);
 			errorMsg = `ログイン試行が多すぎます。${minutes}分後に再試行してください`;
@@ -37,12 +43,12 @@
 
 		loading = true;
 		try {
-			await login(userId, password);
-			recordSuccess(userId);
+			await login(normalizedLastName, normalizedFirstName, password);
+			recordSuccess(loginKey);
 			goto('/');
 		} catch {
-			recordFailure(userId);
-			errorMsg = 'IDまたはPINが正しくありません';
+			recordFailure(loginKey);
+			errorMsg = '苗字・名前またはPINが正しくありません';
 		} finally {
 			loading = false;
 		}
@@ -54,18 +60,30 @@
 		<h1 class="mb-6 text-center text-xl font-bold text-gray-800">おさがり交換</h1>
 
 		<form onsubmit={handleSubmit} class="space-y-4">
-			<div>
-				<label for="userId" class="mb-1 block text-sm font-medium text-gray-700">ID（3桁）</label>
-				<input
-					id="userId"
-					type="text"
-					inputmode="numeric"
-					maxlength={3}
-					bind:value={userId}
-					placeholder="例: 001"
-					required
-					class="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-				/>
+			<div class="grid gap-4 sm:grid-cols-2">
+				<div>
+					<label for="lastName" class="mb-1 block text-sm font-medium text-gray-700">苗字</label>
+					<input
+						id="lastName"
+						type="text"
+						bind:value={lastName}
+						placeholder="例: やまだ"
+						required
+						class="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+					/>
+				</div>
+
+				<div>
+					<label for="firstName" class="mb-1 block text-sm font-medium text-gray-700">名前</label>
+					<input
+						id="firstName"
+						type="text"
+						bind:value={firstName}
+						placeholder="例: たろう"
+						required
+						class="w-full rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+					/>
+				</div>
 			</div>
 
 			<div>

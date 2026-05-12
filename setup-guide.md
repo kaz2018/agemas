@@ -317,7 +317,7 @@ interface Platform {
 主な関数：
 
 - `initAuth()` — アプリ起動時に既存セッションを復元（`SELECT * FROM $auth` で確認）
-- `login(userId, password)` — `db.signin()` を呼び JWT 取得 → ユーザー情報をstateに保存
+- `login(lastName, firstName, password)` — `db.signin()` を呼び JWT 取得 → ユーザー情報をstateに保存
 - `logout()` — `db.invalidate()` でトークン破棄
 
 > **注意:** surrealdb v2 には `db.info()` がない。`SELECT * FROM $auth` でログインユーザーを取得する。
@@ -346,19 +346,19 @@ async function fetchAuthUser(): Promise<AuthUser | null> {
 `src/lib/rateLimit.ts` を作成する。localStorage でログイン失敗回数を管理。
 
 - 5回失敗で15分ロック
-- `checkRateLimit(userId)` — ロック中か確認
-- `recordFailure(userId)` — 失敗を記録
-- `recordSuccess(userId)` — 成功時にリセット
+- `checkRateLimit(loginKey)` — ロック中か確認
+- `recordFailure(loginKey)` — 失敗を記録
+- `recordSuccess(loginKey)` — 成功時にリセット
 
 ### 4-4. ログインページ（/login）
 
 `src/routes/login/+page.svelte` を作成する。
 
-- user_id（**3桁文字列**。例: `"001"`）+ PIN（4桁、`inputmode="numeric"`）の入力フォーム
+- 姓 + 名 + PIN（4桁、`inputmode="numeric"`）の入力フォーム
 - ログイン済みなら `$effect` でトップへリダイレクト
 - エラー時はメッセージを表示
 
-### 4-5. ログイン不能時の確認ログ（2026-04-16）
+### 4-5. ログイン切り替え時の確認ログ（2026-05-12）
 
 事象:
 
@@ -367,9 +367,9 @@ async function fetchAuthUser(): Promise<AuthUser | null> {
 
 原因:
 
-- フロントエンドは `user_id` を **3桁数字文字列**（例: `"001"`）として扱っている
-- 一方、DB には `user_id: "testuser01"` のような旧データが残っていた
-- この値はログイン画面の `^\d{3}$` バリデーションに合致しないため、DB の認証処理まで到達しなかった
+- フロントエンドは `last_name + first_name + PIN` でログインする
+- そのため `last_name` / `first_name` の組み合わせは user テーブル内で一意である必要がある
+- 姓名の前後に余計な空白が残っていると、見た目が同じでも別値として扱われる
 
 確認に使った SurrealQL:
 
@@ -380,24 +380,32 @@ USE DATABASE main;
 SELECT id, user_id, last_name, first_name, role
 FROM user
 ORDER BY user_id ASC;
+
+SELECT last_name, first_name, count() AS count
+FROM user
+GROUP BY last_name, first_name
+ORDER BY count DESC;
 ```
 
 対処:
 
-- 管理者ユーザーの `user_id` を `"001"` に統一
-- 必要に応じて PIN も再設定
+- 同姓同名レコードがある場合は、どちらかの登録名を修正して解消する
+- 姓名の前後に空白が混ざっている場合は trim した値に修正する
+- 必要に応じて PIN も再設定する
+- ロールアウト用SQLは `scripts/update-login-auth-20260512.surql` に保存し、重複解消後に適用する
 
 ```sql
 UPDATE user:l8kqnlmqgy20ka8b8a9d SET
-  user_id = "001",
+  last_name = "やまだ",
+  first_name = "たろう",
   password = crypto::argon2::generate("1234");
 ```
 
 再発防止:
 
-- `user_id` は **必ず3桁文字列**（`"001"` 形式）で登録する
-- `testuser01` や `1` のような旧形式は使わない
-- 作成済みデータに旧形式が混ざっていないか、初期セットアップ後に `SELECT id, user_id FROM user;` で確認する
+- `last_name` + `first_name` の組み合わせは必ず一意にする
+- 登録・更新時は姓名の前後空白を除去して保存する
+- スキーマ変更前に `GROUP BY last_name, first_name` で重複がないことを確認する
 
 ### 4-6. +layout.svelte にページガードを追加
 
@@ -414,7 +422,8 @@ UPDATE user:l8kqnlmqgy20ka8b8a9d SET
 ### 5-2. トップページ（src/routes/+page.svelte）
 
 - `onMount` で初期データを取得（`db.query()` で `status != 'transferred'` の件のみ）
-- 出品者名は `owner.last_name + owner.first_name AS owner_name` でJOIN取得
+- 出品者名は `owner.last_name + ' ' + owner.first_name AS owner_name` でJOIN取得
+- 画面表示は `姓 名` の半角スペース区切りで統一する
 - Live Query でリアルタイム更新
 
 **Live Query の注意点:**
@@ -592,13 +601,13 @@ export type Want = {
 ```ts
 const [itemResult, wantResult] = await Promise.all([
   db.query<[Item[]]>(
-    `SELECT *, owner.last_name + owner.first_name AS owner_name FROM item WHERE status != 'transferred' ORDER BY created_at DESC`,
+    `SELECT *, owner.last_name + ' ' + owner.first_name AS owner_name FROM item WHERE status != 'transferred' ORDER BY created_at DESC`,
   ),
   db.query<[Want[]]>(`
     SELECT
       *,
       requester.user_id AS requester_user_id,
-      requester.last_name + requester.first_name AS requester_name
+      requester.last_name + ' ' + requester.first_name AS requester_name
     FROM want
   `),
 ]);
@@ -652,7 +661,7 @@ UPDATE 時は JOINフィールド（`owner_name`, `requester_user_id`, `requeste
 async function enrichItemWithRequester(item: Item): Promise<Item> {
   const idPart = String(item.id).split(":")[1];
   const r = await db.query<[Want[]]>(
-    'SELECT requester.user_id AS requester_user_id, requester.last_name + requester.first_name AS requester_name FROM want WHERE item = type::record("item", $id)',
+    "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record(\"item\", $id)",
     { id: idPart },
   );
   return {
@@ -706,7 +715,7 @@ function isDuplicateWantError(err: unknown) {
 #### UI: ほしいボタン / ステータス操作
 
 各アイテムカードの下部に条件分岐でボタンを表示する。
-交渉中かつ出品者本人のカードでは、希望者を `002（やまだはなこ）` の形式で表示し、
+交渉中かつ出品者本人のカードでは、希望者を `002（やまだ はなこ）` の形式で表示し、
 「次はLINEやメールなどでやりとりする」「最後に出品者が結果ボタンを押す」という役割分担も併記する。
 また、希望者側の `申請中` 表示は短いラベルだけにせず、外部連絡と出品者の確定操作が必要だと分かる説明文にする。
 
@@ -889,7 +898,7 @@ DEFINE FIELD password ON user TYPE string
 > `FOR create` を追加した場合、既存の `FOR select`・`FOR update`・`FOR delete` も含めて書くこと。
 >
 > `FOR select` を「ログイン済みなら誰でも可」に開いているのは、トップ画面の一覧クエリで
-> `owner.last_name + owner.first_name` のように他人の user レコードを参照するため。
+> `owner.last_name + ' ' + owner.first_name` のように他人の user レコードを参照するため。
 > 機密フィールド（`password`）はフィールド単位の `PERMISSIONS` で本人/admin のみに制限する
 > （SurrealDB のフィールド権限はテーブル権限を緩和できないため、この方向で書く）。
 > 詳しくは `db-design.md` の「フィールド権限はテーブル権限を緩和できない」セクション参照。
@@ -916,10 +925,11 @@ INSERT INTO user {
 
 主な機能：
 
-- **ユーザー一覧**: user_id・姓名・ロール表示
+- **ユーザー一覧**: user_id・姓名・ロール表示（姓名は `姓 名` 形式）
 - **ユーザー編集（インライン）**: 姓・名・PIN（空白なら変更なし）・ロール変更
 - **ユーザー削除**: 自分自身は削除不可（`user.id !== auth.user?.id` でガード）
 - **ユーザー作成フォーム**: user_id（3桁文字列）・姓・名・PIN・ロール
+- **ログインルール**: ログインは姓・名・PINで行うため、同姓同名は登録不可
 - **投稿一覧**: タイトル・出品者・状態・作成日時を表示
 - **投稿編集**: 既存の `/items/[id]/edit` に遷移して管理者も編集可能
 - **投稿削除**: 管理画面から直接削除。関連 `want` を先に削除して孤児レコードを残さない
@@ -951,7 +961,7 @@ await db.query(
 );
 ```
 
-> **注意:** `user_id` は DB 設計・ログイン画面ともに **3桁文字列** 前提。`1` や `testuser01` のような別形式を混在させるとログイン不能の原因になる。
+> **注意:** `user_id` は会員番号として **3桁文字列** 前提。ログインキーではないが、表示・管理用に `001` 形式で統一しておく。
 
 **パスワードリセットクエリ**:
 
@@ -971,7 +981,7 @@ const result = await db.query<[Item[]]>(
   `SELECT
     *,
     owner.user_id AS owner_user_id,
-    owner.last_name + owner.first_name AS owner_name
+    owner.last_name + ' ' + owner.first_name AS owner_name
   FROM item
   ORDER BY created_at DESC`,
 );
@@ -1020,14 +1030,14 @@ if (!ownedByCurrentUser && !isAdmin) {
 
 ### 背景
 
-トップ画面の一覧クエリは `owner.last_name + owner.first_name AS owner_name` のように
+トップ画面の一覧クエリは `owner.last_name + ' ' + owner.first_name AS owner_name` のように
 他人の `user` レコードを辿って表示名を組み立てている。
 
 `user` テーブルの `FOR select` が「本人 or admin」のみだと他人の user レコードを読めず、
 `owner.last_name` / `owner.first_name` が `NONE` になる。
 SurrealDB は `NONE + NONE` を計算できないため一覧クエリ全体が落ちる。
 
-`want.requester` を辿る `requester.last_name + requester.first_name`（交渉中表示）も同じ。
+`want.requester` を辿る `requester.last_name + ' ' + requester.first_name`（交渉中表示）も同じ。
 
 ### なぜフィールド権限ではなくテーブル権限を開けるのか
 
@@ -1063,7 +1073,7 @@ DEFINE FIELD OVERWRITE password ON user TYPE string
 
 ### 動作確認
 
-ユーザー001で出品 → ユーザー002でログイン → トップ画面でその出品が表示され、
+ユーザー001で出品 → ユーザー002（登録名でログイン）でログイン → トップ画面でその出品が表示され、
 「出品者: 〇〇〇〇」も正しく描画されることを確認する。
 
 ---
