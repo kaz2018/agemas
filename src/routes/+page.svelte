@@ -59,16 +59,34 @@
     );
   }
 
-  // wantから希望者ID/名前を取得してitemに付加する
-  async function enrichItemWithRequester(item: Item): Promise<Item> {
-    const r = await db.query<[Want[]]>(
-      "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)",
-      { itemId: recordId(item.id) },
-    );
+  // Live Query の生データには JOIN 由来の表示項目が入らないため、一覧用に補完する
+  async function enrichItemForList(item: Item): Promise<Item> {
+    const itemId = recordId(item.id);
+    const [itemResult, wantResult] = await Promise.all([
+      db.query<[Item[]]>(
+        `SELECT
+          *,
+          owner.last_name + ' ' + owner.first_name AS owner_name
+        FROM type::record($itemId)`,
+        { itemId },
+      ),
+      db.query<[Want[]]>(
+        "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)",
+        { itemId },
+      ),
+    ]);
+
+    const enrichedItem = itemResult[0]?.[0];
+    const requester = wantResult[0]?.[0];
+
+    if (!enrichedItem) {
+      return item;
+    }
+
     return {
-      ...item,
-      requester_user_id: r[0]?.[0]?.requester_user_id,
-      requester_name: r[0]?.[0]?.requester_name,
+      ...enrichedItem,
+      requester_user_id: requester?.requester_user_id,
+      requester_name: requester?.requester_name,
     };
   }
 
@@ -134,7 +152,8 @@
           if (msg.action === "CREATE") {
             const newItem = msg.value as Item;
             if (newItem.status !== "transferred") {
-              items = [newItem, ...items];
+              const enriched = await enrichItemForList(newItem);
+              items = [enriched, ...items];
             }
           } else if (msg.action === "UPDATE") {
             const updated = msg.value as Item;
@@ -150,7 +169,7 @@
                 myWantIds = newSet;
               }
               // JOINフィールドを補完して更新
-              const enriched = await enrichItemWithRequester(updated);
+              const enriched = await enrichItemForList(updated);
               items = items.map((i) =>
                 recordId(i.id) === recordId(updated.id) ? enriched : i,
               );

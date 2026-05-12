@@ -461,7 +461,7 @@ onDestroy(() => {
 
 **Live Query のメッセージ処理:**
 
-- `action === 'CREATE'` → リストに追加
+- `action === 'CREATE'` → リストに追加する前に `owner_name` / `requester_name` を補完する
 - `action === 'UPDATE'` → `transferred` になったら除外、それ以外は更新
 - `action === 'DELETE'` → リストから削除（`String(msg.recordId)` で比較）
 
@@ -633,11 +633,17 @@ myWantIds = new Set(
 > 一般ユーザーは「自分がほしいを押したwant」と「自分の出品に対するwant」のみ取得できる。
 > `SELECT * FROM want` だけで自分に関係するwantのみ返ってくる。
 
-#### Live Query UPDATE ハンドラー修正
+#### Live Query CREATE / UPDATE ハンドラー修正
 
-UPDATE 時は JOINフィールド（`owner_name`, `requester_user_id`, `requester_name`）が含まれないため、補完処理を追加する。
+Live Query の `CREATE` / `UPDATE` で渡ってくる item には JOINフィールド（`owner_name`, `requester_user_id`, `requester_name`）が含まれないため、補完処理を追加する。
 
 ```ts
+if (msg.action === 'CREATE') {
+  const newItem = msg.value as Item;
+  if (newItem.status !== 'transferred') {
+    const enriched = await enrichItemForList(newItem);
+    items = [enriched, ...items];
+  }
 } else if (msg.action === 'UPDATE') {
   const updated = msg.value as Item;
   if (updated.status === 'transferred') {
@@ -649,25 +655,37 @@ UPDATE 時は JOINフィールド（`owner_name`, `requester_user_id`, `requeste
       newSet.delete(String(updated.id));
       myWantIds = newSet;
     }
-    // want テーブルから希望者ID/名前を別途取得して付加
-    const enriched = await enrichItemWithRequester(updated);
+    // owner_name / requester_name を別途取得して付加
+    const enriched = await enrichItemForList(updated);
     items = items.map((i) => (i.id === updated.id ? enriched : i));
   }
 }
 ```
 
 ```ts
-// 希望者ID/名前を補完するヘルパー
-async function enrichItemWithRequester(item: Item): Promise<Item> {
-  const idPart = String(item.id).split(":")[1];
-  const r = await db.query<[Want[]]>(
-    "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record(\"item\", $id)",
-    { id: idPart },
-  );
+// 一覧表示に必要な JOIN 項目を補完するヘルパー
+async function enrichItemForList(item: Item): Promise<Item> {
+  const itemId = String(item.id);
+  const [itemResult, wantResult] = await Promise.all([
+    db.query<[Item[]]>(
+      `SELECT *, owner.last_name + ' ' + owner.first_name AS owner_name
+       FROM type::record($itemId)`,
+      { itemId },
+    ),
+    db.query<[Want[]]>(
+      "SELECT requester.user_id AS requester_user_id, requester.last_name + ' ' + requester.first_name AS requester_name FROM want WHERE item = type::record($itemId)",
+      { itemId },
+    ),
+  ]);
+
+  const enrichedItem = itemResult[0]?.[0];
+  const requester = wantResult[0]?.[0];
+  if (!enrichedItem) return item;
+
   return {
-    ...item,
-    requester_user_id: r[0]?.[0]?.requester_user_id,
-    requester_name: r[0]?.[0]?.requester_name,
+    ...enrichedItem,
+    requester_user_id: requester?.requester_user_id,
+    requester_name: requester?.requester_name,
   };
 }
 ```
