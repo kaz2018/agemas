@@ -21,7 +21,10 @@
 	});
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+	<title>おさがり掲示板</title>
+	<link rel="icon" href={favicon} />
+</svelte:head>
 
 {#if auth.loading}
 	<!-- セッション復元中はローディング表示 -->

@@ -57,7 +57,7 @@
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50">
 	<div class="w-full max-w-sm rounded-lg bg-white p-8 shadow">
-		<h1 class="mb-6 text-center text-xl font-bold text-gray-800">おさがり交換</h1>
+		<h1 class="mb-6 text-center text-xl font-bold text-gray-800">おさがり掲示板</h1>
 
 		<form onsubmit={handleSubmit} class="space-y-4">
 			<div class="grid gap-4 sm:grid-cols-2">

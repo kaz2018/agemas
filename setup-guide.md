@@ -701,6 +701,14 @@ async function handleWant(itemId: string) {
   );
 }
 
+// 希望者側キャンセル: 自分の want レコードのみ削除（item.status 更新はDBイベントに委譲）
+async function handleWantCancel(itemId: string) {
+  await db.query(
+    "DELETE want WHERE item = type::record($itemId) AND requester = $auth.id",
+    { itemId },
+  );
+}
+
 // 譲渡成立: status を transferred に更新（Live Queryが一覧から除外する）
 async function handleTransferred(itemId: string) {
   await db.query(
@@ -735,7 +743,8 @@ function isDuplicateWantError(err: unknown) {
 各アイテムカードの下部に条件分岐でボタンを表示する。
 交渉中かつ出品者本人のカードでは、希望者を `002（やまだ はなこ）` の形式で表示し、
 「次はLINEやメールなどでやりとりする」「最後に出品者が結果ボタンを押す」という役割分担も併記する。
-また、希望者側の `申請中` 表示は短いラベルだけにせず、外部連絡と出品者の確定操作が必要だと分かる説明文にする。
+また、希望者側の `申請中` 表示は短いラベルだけにせず、外部連絡と出品者の確定操作が必要だと分かる説明文にし、
+`交渉中` の間は本人が自分の申請を取り消せるボタンも出す。
 
 ```svelte
 <div class="flex flex-col gap-2">
@@ -746,16 +755,26 @@ function isDuplicateWantError(err: unknown) {
         次はご自分のLINEやメールなどで出品者とやりとりしてください。
       </p>
       <p class="mt-1">
-        お話がまとまりましたら、出品者側で「あげる」または「キャンセル」を押して結果が反映されます。
+        お話がまとまりましたら、出品者側で「あげる」または「あげない」を押して結果が反映されます。
       </p>
+      {#if item.status === 'negotiating'}
+        <p class="mt-1">
+          やっぱりやめる場合は、下のボタンからほしいを取り消せます。
+        </p>
+      {/if}
     </div>
+    {#if item.status === 'negotiating'}
+      <button onclick={() => handleWantCancel(String(item.id))}>
+        ほしいを取り消す
+      </button>
+    {/if}
 
   {:else if item.status === 'available' && String(item.owner) !== String(auth.user?.id)}
     <!-- ほしいボタン（自分が出品していないavailable品） -->
     <button onclick={() => handleWant(String(item.id))}>ほしい</button>
 
   {:else if item.status === 'negotiating' && String(item.owner) === String(auth.user?.id)}
-    <!-- 出品者向け: 希望者ID/名前 + 案内 + キャンセル / あげる -->
+    <!-- 出品者向け: 希望者ID/名前 + 案内 + あげない / あげる -->
     {#if item.requester_user_id || item.requester_name}
       <div class="space-y-1 rounded-2xl bg-yellow-50 px-3 py-2 text-yellow-800">
         <p class="font-medium">
@@ -766,10 +785,10 @@ function isDuplicateWantError(err: unknown) {
           さんがほしい申請中です。
         </p>
         <p>次はLINEやメールなどでやりとりしてください。</p>
-        <p>譲ることが決まったら「あげる」、見送る場合は「キャンセル」を押してください。</p>
+        <p>譲ることが決まったら「あげる」、見送る場合は「あげない」を押してください。</p>
       </div>
     {/if}
-    <button onclick={() => handleNegotiationFailed(String(item.id))}>キャンセル</button>
+    <button onclick={() => handleNegotiationFailed(String(item.id))}>あげない</button>
     <button onclick={() => handleTransferred(String(item.id))}>あげる</button>
   {/if}
 </div>
@@ -779,18 +798,21 @@ function isDuplicateWantError(err: unknown) {
 
 - トーストや一時メッセージだけに頼らず、カード内に残る案内にする
 - 希望者側は「申請したあと自分で連絡する」、出品者側は「最後に結果を確定する」をそれぞれ明示する
-- ボタン名は状態名（`交渉決裂` / `譲渡成立`）より、行動を表す `キャンセル` / `あげる` のほうが直感的
+- ボタン名は状態名（`交渉決裂` / `譲渡成立`）より、行動を表す `あげない` / `あげる` のほうが直感的
 
 ### ステータス遷移まとめ
 
 | 操作             | 前            | 後            | 誰が操作 |
 | ---------------- | ------------- | ------------- | -------- |
 | ほしいボタン押下 | `available`   | `negotiating` | 非出品者 |
+| ほしい取り消し   | `negotiating` | `available` ※ | 希望者   |
 | あげるボタン     | `negotiating` | `transferred` | 出品者   |
-| キャンセルボタン | `negotiating` | `available`   | 出品者   |
+| あげないボタン   | `negotiating` | `available`   | 出品者   |
 
 - `transferred` になったアイテムは一覧から非表示（SurrealDB のパーミッションでも `status != 'transferred'` でブロック）
-- `キャンセル` 時は `DELETE want WHERE item = ...` で want レコードも削除する
+- 希望者が `ほしいを取り消す` ときは `DELETE want WHERE item = ... AND requester = $auth.id` を送る
+- 出品者の `あげない` 時は `DELETE want WHERE item = ...` で対象出品の want を削除する
+- ※ 先着1名運用では `available` に戻る。将来複数 want を許可する場合は、残件数に応じて `negotiating` 維持もあり得る
 
 ---
 

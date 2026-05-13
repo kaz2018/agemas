@@ -30,10 +30,12 @@
   const buyerContactMessage =
     "次はご自分のLINEやメールなどで出品者とやりとりしてください。";
   const buyerResolutionMessage =
-    "お話がまとまりましたら、出品者側で「あげる」または「キャンセル」を押して結果が反映されます。";
+    "お話がまとまりましたら、出品者側で「あげる」または「あげない」を押して結果が反映されます。";
+  const buyerCancelMessage =
+    "やっぱりやめる場合は、下のボタンからほしいを取り消せます。";
   const sellerContactMessage = "次はLINEやメールなどでやりとりしてください。";
   const sellerResolutionMessage =
-    "譲ることが決まったら「あげる」、見送る場合は「キャンセル」を押してください。";
+    "譲ることが決まったら「あげる」、見送る場合は「あげない」を押してください。";
 
   function recordId(value: unknown) {
     return String(value);
@@ -45,6 +47,16 @@
 
   function isOwnedByCurrentUser(item: Item) {
     return recordId(item.owner) === currentUserId();
+  }
+
+  function updateMyWantIds(itemId: string, wanted: boolean) {
+    const newSet = new Set(myWantIds);
+    if (wanted) {
+      newSet.add(itemId);
+    } else {
+      newSet.delete(itemId);
+    }
+    myWantIds = newSet;
   }
 
   function getErrorMessage(err: unknown, fallback: string) {
@@ -158,15 +170,14 @@
           } else if (msg.action === "UPDATE") {
             const updated = msg.value as Item;
             if (updated.status === "transferred") {
+              updateMyWantIds(recordId(updated.id), false);
               items = items.filter(
                 (i) => recordId(i.id) !== recordId(updated.id),
               );
             } else {
               // available に戻ったら myWantIds から除外
               if (updated.status === "available") {
-                const newSet = new Set(myWantIds);
-                newSet.delete(recordId(updated.id));
-                myWantIds = newSet;
+                updateMyWantIds(recordId(updated.id), false);
               }
               // JOINフィールドを補完して更新
               const enriched = await enrichItemForList(updated);
@@ -175,6 +186,7 @@
               );
             }
           } else if (msg.action === "DELETE") {
+            updateMyWantIds(recordId(msg.recordId), false);
             items = items.filter(
               (i) => recordId(i.id) !== recordId(msg.recordId),
             );
@@ -209,18 +221,33 @@
           itemId,
         },
       );
-      const newSet = new Set(myWantIds);
-      newSet.add(itemId);
-      myWantIds = newSet;
+      updateMyWantIds(itemId, true);
     } catch (err) {
       if (isDuplicateWantError(err)) {
-        const newSet = new Set(myWantIds);
-        newSet.add(itemId);
-        myWantIds = newSet;
+        updateMyWantIds(itemId, true);
         errorMsg = "すでに申請中です";
       } else {
         errorMsg = getErrorMessage(err, "申請に失敗しました");
       }
+    } finally {
+      actionLoading[itemId] = false;
+    }
+  }
+
+  // 希望者側キャンセル: 自分の want レコードのみ削除（status更新はDBイベントに委譲）
+  async function handleWantCancel(itemId: string) {
+    actionLoading[itemId] = true;
+    errorMsg = "";
+    try {
+      await db.query(
+        "DELETE want WHERE item = type::record($itemId) AND requester = $auth.id",
+        {
+          itemId,
+        },
+      );
+      updateMyWantIds(itemId, false);
+    } catch (err) {
+      errorMsg = getErrorMessage(err, "申請キャンセルに失敗しました");
     } finally {
       actionLoading[itemId] = false;
     }
@@ -265,7 +292,7 @@
   <div
     class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"
   >
-    <h1 class="text-lg font-bold text-gray-800">おさがり交換</h1>
+    <h1 class="text-lg font-bold text-gray-800">おさがり掲示板</h1>
     <div class="flex items-center gap-3">
       <span class="text-sm text-gray-500">
         {formatFullName(auth.user?.last_name, auth.user?.first_name)}
@@ -379,7 +406,21 @@
                     <p class="font-medium">ほしい申請しました。</p>
                     <p class="mt-1">{buyerContactMessage}</p>
                     <p class="mt-1">{buyerResolutionMessage}</p>
+                    {#if item.status === "negotiating"}
+                      <p class="mt-1">{buyerCancelMessage}</p>
+                    {/if}
                   </div>
+                  {#if item.status === "negotiating"}
+                    <button
+                      onclick={() => handleWantCancel(recordId(item.id))}
+                      disabled={actionLoading[recordId(item.id)]}
+                      class="w-full rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {actionLoading[recordId(item.id)]
+                        ? "処理中..."
+                        : "ほしいを取り消す"}
+                    </button>
+                  {/if}
                 {:else if item.status === "available" && !isOwnedByCurrentUser(item)}
                   <!-- ほしいボタン（自分が出品していないavailable品） -->
                   <button
@@ -390,7 +431,7 @@
                     {actionLoading[recordId(item.id)] ? "処理中..." : "ほしい"}
                   </button>
                 {:else if item.status === "negotiating" && isOwnedByCurrentUser(item)}
-                  <!-- 出品者向け: キャンセル / あげる -->
+                  <!-- 出品者向け: あげない / あげる -->
                   <div class="grid grid-cols-2 gap-2">
                     <button
                       onclick={() => handleNegotiationFailed(recordId(item.id))}
@@ -399,7 +440,7 @@
                     >
                       {actionLoading[recordId(item.id)]
                         ? "処理中..."
-                        : "キャンセル"}
+                        : "あげない"}
                     </button>
                     <button
                       onclick={() => handleTransferred(recordId(item.id))}
