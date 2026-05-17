@@ -49,6 +49,10 @@ DEFINE FIELD status      ON item TYPE string DEFAULT 'available';
   -- 'available' | 'negotiating' | 'transferred'
 DEFINE FIELD created_at  ON item TYPE datetime DEFAULT time::now();
 DEFINE FIELD updated_at  ON item TYPE datetime DEFAULT time::now();
+DEFINE FIELD category_type   ON item TYPE option<string>;
+DEFINE FIELD category_age    ON item TYPE option<string>;
+DEFINE FIELD category_gender ON item TYPE option<string>;
+DEFINE FIELD category_size   ON item TYPE option<string>;
 
 -- want テーブル（ほしいボタン）
 DEFINE TABLE want SCHEMAFULL
@@ -109,15 +113,30 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 | `negotiating` | 交渉中（先着1名が「ほしい」押下済み） |
 | `transferred` | 譲渡成立（非表示）                    |
 
+## AIカテゴリ項目（item.category_*）
+
+| フィールド | 値 |
+| ---------- | --- |
+| `category_type` | `"服・小物"` / `"おもちゃ・ゲーム"` / `"絵本・本・教材"` / `"育児用品"` / `"その他"` |
+| `category_age` | `"未満児（〜2歳）"` / `"幼児（3〜6歳）"` / `"小学生低学年（7〜9歳）"` / `"小学生高学年（10〜12歳）"` / `"年齢不問"` |
+| `category_gender` | `"男の子"` / `"女の子"` / `"兼用"` |
+| `category_size` | 服・小物のみサイズ文字列を保存し、それ以外は `NONE` |
+
+- カテゴリは `src/routes/api/categorize/+server.ts` で Gemini に問い合わせて自動付与する
+- Gemini 応答はアプリ側で許可値に正規化し、不正値は保存しない
+- Gemini 失敗時は全項目 `NONE` のまま保存し、出品フローは継続する
+
 ## want テーブルの権限境界
 
 - `want` の作成者（requester）は自分の `want` を作成・削除できる
 - 出品者（item.owner）は自分の出品にぶら下がる `want` を削除できる
 - 出品者（item.owner）は自分の出品にぶら下がる `want` から `requester.user_id` / `requester.last_name` / `requester.first_name` を参照できる
 - `item.status` の更新や `transferred` 時の `want` 掃除は DB event が担う
+- 希望者本人の「ほしいを取り消す」は `DELETE want WHERE item = ... AND requester = $auth.id` で実装できる
 
-この構成にすると、フロントは「ほしい」時に `want` を INSERT、「交渉決裂」時に `want` を DELETE、
-「譲渡成立」時に `item.status = 'transferred'` へ UPDATE するだけでよい。
+この構成にすると、フロントは「ほしい」時に `want` を INSERT、希望者側の「ほしいを取り消す」と
+出品者側の「あげない」時に `want` を DELETE、「譲渡成立」時に `item.status = 'transferred'`
+へ UPDATE するだけでよい。
 `DEFINE EVENT` 内のクエリは権限チェックなしで動くため、permission boundary をDB側で吸収できる。
 
 フロントの一覧表示では `want` を読む際に
@@ -130,7 +149,7 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 | Event                 | Trigger                               | Action                                           |
 | --------------------- | ------------------------------------- | ------------------------------------------------ |
 | `on_want_create`      | `want` CREATE                         | 対象 `item.status` を `negotiating` に更新       |
-| `on_want_delete`      | `want` DELETE                         | 同じ item の want が 0 件なら `available` に戻す |
+| `on_want_delete`      | `want` DELETE                         | 希望者取消/出品者あげない後に 0 件なら `available` に戻す |
 | `on_item_transferred` | `item.status` が `transferred` へ遷移 | 関連 `want` を全削除                             |
 
 ## JavaScript SDK サインイン（SDK v2系 / v3サーバー対応）
