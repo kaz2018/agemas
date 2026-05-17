@@ -554,6 +554,7 @@ function isOwnedByCurrentUser(item: Item) {
 - `src/routes/api/categorize/+server.ts` を追加し、Gemini にタイトル・説明を送って `category_type` / `category_age` / `category_gender` / `category_size` を JSON で返す
 - APIレスポンスは許可値へ正規化し、`category_type !== "服・小物"` の場合は `category_size` を必ず `null` にする
 - 失敗時は `{ category_type: null, category_age: null, category_gender: null, category_size: null }` を返し、出品フロー自体は止めない
+- SurrealDB の `option<string>` フィールドへは JSON `null` をそのまま書けないため、保存クエリでは `IF $category_x = NULL THEN NONE ELSE $category_x END` に変換して書き込む
 - `npm run check:surreal-compat` を毎回実行し、旧SurrealDB記法の混入がないことを確認する
 
 ### 6-1. 出品作成（/items/new）

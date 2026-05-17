@@ -113,18 +113,19 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 | `negotiating` | 交渉中（先着1名が「ほしい」押下済み） |
 | `transferred` | 譲渡成立（非表示）                    |
 
-## AIカテゴリ項目（item.category_*）
+## AIカテゴリ項目（item.category\_\*）
 
-| フィールド | 値 |
-| ---------- | --- |
-| `category_type` | `"服・小物"` / `"おもちゃ・ゲーム"` / `"絵本・本・教材"` / `"育児用品"` / `"その他"` |
-| `category_age` | `"未満児（〜2歳）"` / `"幼児（3〜6歳）"` / `"小学生低学年（7〜9歳）"` / `"小学生高学年（10〜12歳）"` / `"年齢不問"` |
-| `category_gender` | `"男の子"` / `"女の子"` / `"兼用"` |
-| `category_size` | 服・小物のみサイズ文字列を保存し、それ以外は `NONE` |
+| フィールド        | 値                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `category_type`   | `"服・小物"` / `"おもちゃ・ゲーム"` / `"絵本・本・教材"` / `"育児用品"` / `"その他"`                                |
+| `category_age`    | `"未満児（〜2歳）"` / `"幼児（3〜6歳）"` / `"小学生低学年（7〜9歳）"` / `"小学生高学年（10〜12歳）"` / `"年齢不問"` |
+| `category_gender` | `"男の子"` / `"女の子"` / `"兼用"`                                                                                  |
+| `category_size`   | 服・小物のみサイズ文字列を保存し、それ以外は `NONE`                                                                 |
 
 - カテゴリは `src/routes/api/categorize/+server.ts` で Gemini に問い合わせて自動付与する
 - Gemini 応答はアプリ側で許可値に正規化し、不正値は保存しない
 - Gemini 失敗時は全項目 `NONE` のまま保存し、出品フローは継続する
+- JavaScript 側ではカテゴリ未設定を `null` で扱い、SurrealQL 書き込み時に `IF $field = NULL THEN NONE ELSE $field END` で `NONE` へ変換する
 
 ## want テーブルの権限境界
 
@@ -146,11 +147,11 @@ DEFINE ACCESS user ON DATABASE TYPE RECORD
 
 ## Events
 
-| Event                 | Trigger                               | Action                                           |
-| --------------------- | ------------------------------------- | ------------------------------------------------ |
-| `on_want_create`      | `want` CREATE                         | 対象 `item.status` を `negotiating` に更新       |
+| Event                 | Trigger                               | Action                                                    |
+| --------------------- | ------------------------------------- | --------------------------------------------------------- |
+| `on_want_create`      | `want` CREATE                         | 対象 `item.status` を `negotiating` に更新                |
 | `on_want_delete`      | `want` DELETE                         | 希望者取消/出品者あげない後に 0 件なら `available` に戻す |
-| `on_item_transferred` | `item.status` が `transferred` へ遷移 | 関連 `want` を全削除                             |
+| `on_item_transferred` | `item.status` が `transferred` へ遷移 | 関連 `want` を全削除                                      |
 
 ## JavaScript SDK サインイン（SDK v2系 / v3サーバー対応）
 

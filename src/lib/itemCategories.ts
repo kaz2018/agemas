@@ -34,6 +34,24 @@ export const EMPTY_ITEM_CATEGORIES: ItemCategories = {
   category_size: null,
 };
 
+function surrealOptionalStringParam(name: keyof ItemCategories) {
+  return `IF $${name} = NULL THEN NONE ELSE $${name} END`;
+}
+
+export const SURREAL_ITEM_CATEGORY_CREATE_FIELDS = `
+category_type: ${surrealOptionalStringParam("category_type")},
+category_age: ${surrealOptionalStringParam("category_age")},
+category_gender: ${surrealOptionalStringParam("category_gender")},
+category_size: ${surrealOptionalStringParam("category_size")}
+`.trim();
+
+export const SURREAL_ITEM_CATEGORY_UPDATE_FIELDS = `
+category_type=${surrealOptionalStringParam("category_type")},
+category_age=${surrealOptionalStringParam("category_age")},
+category_gender=${surrealOptionalStringParam("category_gender")},
+category_size=${surrealOptionalStringParam("category_size")}
+`.trim();
+
 function pickAllowedValue<T extends readonly string[]>(
   value: unknown,
   allowed: T,

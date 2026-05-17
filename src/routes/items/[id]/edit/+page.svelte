@@ -5,6 +5,7 @@
   import { db } from "$lib/db";
   import { auth } from "$lib/auth.svelte";
   import { categorizeItem } from "$lib/itemCategorization";
+  import { SURREAL_ITEM_CATEGORY_UPDATE_FIELDS } from "$lib/itemCategories";
   import type { Item } from "$lib/types";
 
   const itemId = $derived($page.params.id);
@@ -121,8 +122,7 @@
       await db.query(
         `UPDATE type::record("item", $id)
 				 SET title=$title, description=$description, images=$images, updated_at=time::now(),
-				     category_type=$category_type, category_age=$category_age,
-				     category_gender=$category_gender, category_size=$category_size`,
+				     ${SURREAL_ITEM_CATEGORY_UPDATE_FIELDS}`,
         {
           id: itemId,
           title: title.trim(),

@@ -3,6 +3,7 @@
   import { db } from "$lib/db";
   import { auth } from "$lib/auth.svelte";
   import { categorizeItem } from "$lib/itemCategorization";
+  import { SURREAL_ITEM_CATEGORY_CREATE_FIELDS } from "$lib/itemCategories";
 
   let title = $state("");
   let description = $state("");
@@ -66,10 +67,7 @@
 					description: $description,
 					images: $images,
 					status: 'available',
-          category_type: $category_type,
-          category_age: $category_age,
-          category_gender: $category_gender,
-          category_size: $category_size
+          ${SURREAL_ITEM_CATEGORY_CREATE_FIELDS}
 				}
 			`,
         {
