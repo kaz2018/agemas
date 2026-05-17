@@ -240,6 +240,14 @@ SURREALDB_DB=main
 
 `tables` に `user`、`item`、`want` が表示されれば成功。
 
+AIカテゴリ自動付与を使う場合は、`item` テーブルにカテゴリ4項目も追加する。
+
+```bash
+./surql.sh "DEFINE FIELD OVERWRITE category_type ON item TYPE option<string>; DEFINE FIELD OVERWRITE category_age ON item TYPE option<string>; DEFINE FIELD OVERWRITE category_gender ON item TYPE option<string>; DEFINE FIELD OVERWRITE category_size ON item TYPE option<string>;"
+```
+
+`INFO FOR TABLE item` を実行して `category_type` / `category_age` / `category_gender` / `category_size` が見えれば反映済み。
+
 ---
 
 ## Step 3: Cloudflare R2 バケット設定
@@ -283,6 +291,7 @@ bucket_name = "<bucket-name>"
 interface Platform {
   env: {
     IMAGES: R2Bucket;
+    GOOGLE_AI_API_KEY: string;
   };
 }
 ```
@@ -299,6 +308,16 @@ interface Platform {
 - キー: `${Date.now()}-${crypto.randomUUID()}.${ext}`（重複防止）
 
 画像取得APIは `Cache-Control: public, max-age=31536000`（1年）を返す。
+
+### 3-6. Gemini API キーを Cloudflare / ローカルに設定
+
+- ローカル開発では `.dev.vars` に `GOOGLE_AI_API_KEY=...` を設定する
+- Cloudflare Pages 本番では Dashboard の **Settings > Environment variables** に同名の変数を追加する
+- `src/routes/api/categorize/+server.ts` では `platform.env.GOOGLE_AI_API_KEY` から取得する
+- Gemini 呼び出しは `x-goog-api-key` ヘッダー + `responseMimeType: 'application/json'` で実装する
+- カテゴリ判定に失敗しても出品は継続し、カテゴリだけ `null` で保存する
+
+> **注意:** APIキーは `.env` や `PUBLIC_` 付き環境変数に入れない。ブラウザ公開値にしないこと。
 
 ---
 
@@ -469,7 +488,7 @@ onDestroy(() => {
 
 - SurrealDB SDK の `id` / `owner` / `requester` は `RecordId` オブジェクトで返ることがある
 - UI 条件分岐では **両辺を `String(...)` で正規化** してから比較する
-- 片側だけ文字列化すると、出品者なのに `編集` や `キャンセル` / `あげる` が表示されない不具合になる
+- 片側だけ文字列化すると、出品者なのに `編集` や `あげない` / `あげる` が表示されない不具合になる
 
 ```ts
 function recordId(value: unknown) {
@@ -529,12 +548,22 @@ function isOwnedByCurrentUser(item: Item) {
 
 ## Step 6: 出品作成・編集・削除機能実装
 
+### 6-0. AIカテゴリ自動付与（共通）
+
+- 共有定義は `src/lib/itemCategories.ts` にまとめる
+- `src/routes/api/categorize/+server.ts` を追加し、Gemini にタイトル・説明を送って `category_type` / `category_age` / `category_gender` / `category_size` を JSON で返す
+- APIレスポンスは許可値へ正規化し、`category_type !== "服・小物"` の場合は `category_size` を必ず `null` にする
+- 失敗時は `{ category_type: null, category_age: null, category_gender: null, category_size: null }` を返し、出品フロー自体は止めない
+- `npm run check:surreal-compat` を毎回実行し、旧SurrealDB記法の混入がないことを確認する
+
 ### 6-1. 出品作成（/items/new）
 
 `src/routes/items/new/+page.svelte` を作成する。
 
 - 画像は `/api/upload` に POST → R2キーを取得
+- 画像アップロード後、`/api/categorize` に `title` / `description` を送ってカテゴリを取得する
 - SurrealDB への登録は `db.query('INSERT INTO item { owner: $auth.id, ... }')`
+- `INSERT INTO item` には `category_type` / `category_age` / `category_gender` / `category_size` も含める
 - `owner` は `$auth.id`（サーバー側で設定されるため安全）
 - 画像とタイトルは必須にし、**両方が揃うまで送信ボタンを disabled にする**
 - 送信ボタンの活性条件とは別に、`handleSubmit()` 内でも画像未選択・タイトル未入力をチェックしてエラーメッセージを返す
@@ -546,7 +575,9 @@ function isOwnedByCurrentUser(item: Item) {
 - レコード取得: `SELECT * FROM type::record("item", $id)` でIDを安全にバインド
 - 初期表示中は `loadingItem` を `true` にして、取得成功後にだけフォームを表示する。取得前に空の `title` / `description` を描画しない
 - レコード取得失敗時は空フォームを出さず、`loadError` に取得失敗メッセージを表示する
+- 更新前に `/api/categorize` を再度呼び、編集後のタイトル・説明でカテゴリを再判定する
 - 更新: `UPDATE type::record("item", $id) SET ...`
+- `UPDATE` では `category_type` / `category_age` / `category_gender` / `category_size` も同時に更新する
 - 削除: `DELETE want WHERE item = type::record("item", $id); DELETE type::record("item", $id)` の順で関連 `want` を掃除してから本体を削除する
 - 既存画像はキーのリストで管理し、×ボタンで除外 → 新規画像と結合して保存
 - 編集画面でも画像とタイトルを必須にする。送信ボタンの活性条件は `title.trim().length > 0 && (existingImages.length > 0 || newFiles.length > 0)` にする
@@ -556,7 +587,7 @@ function isOwnedByCurrentUser(item: Item) {
 
 ```svelte
 {#if String(item.owner) === String(auth.user?.id)}
-  <a href={`/items/${String(item.id).split(':')[1]}/edit`}>編集</a>
+  <a href={`/items/${String(item.id).split(":")[1]}/edit`}>編集</a>
 {/if}
 ```
 
@@ -633,24 +664,32 @@ myWantIds = new Set(
 > 一般ユーザーは「自分がほしいを押したwant」と「自分の出品に対するwant」のみ取得できる。
 > `SELECT * FROM want` だけで自分に関係するwantのみ返ってくる。
 
+#### AIカテゴリのフィルタ UI
+
+- `<main>` の先頭に `filterType` / `filterAge` / `filterGender` の3つの `select` を置く
+- 一覧は `items` ではなく `$derived` の `filteredItems` を描画する
+- 既存レコードはカテゴリ未設定でも動くように、`undefined` / `null` は「未指定」として扱う
+- 条件一致ゼロ件時は「条件に一致する出品はありません」と表示する
+- カード本文にはカテゴリバッジを並べ、`category_size` は `bg-blue-50` で区別すると見やすい
+
 #### Live Query CREATE / UPDATE ハンドラー修正
 
 Live Query の `CREATE` / `UPDATE` で渡ってくる item には JOINフィールド（`owner_name`, `requester_user_id`, `requester_name`）が含まれないため、補完処理を追加する。
 
 ```ts
-if (msg.action === 'CREATE') {
+if (msg.action === "CREATE") {
   const newItem = msg.value as Item;
-  if (newItem.status !== 'transferred') {
+  if (newItem.status !== "transferred") {
     const enriched = await enrichItemForList(newItem);
     items = [enriched, ...items];
   }
-} else if (msg.action === 'UPDATE') {
+} else if (msg.action === "UPDATE") {
   const updated = msg.value as Item;
-  if (updated.status === 'transferred') {
+  if (updated.status === "transferred") {
     items = items.filter((i) => i.id !== updated.id);
   } else {
     // available に戻ったら myWantIds から除外
-    if (updated.status === 'available') {
+    if (updated.status === "available") {
       const newSet = new Set(myWantIds);
       newSet.delete(String(updated.id));
       myWantIds = newSet;
@@ -757,38 +796,42 @@ function isDuplicateWantError(err: unknown) {
       <p class="mt-1">
         お話がまとまりましたら、出品者側で「あげる」または「あげない」を押して結果が反映されます。
       </p>
-      {#if item.status === 'negotiating'}
+      {#if item.status === "negotiating"}
         <p class="mt-1">
           やっぱりやめる場合は、下のボタンからほしいを取り消せます。
         </p>
       {/if}
     </div>
-    {#if item.status === 'negotiating'}
+    {#if item.status === "negotiating"}
       <button onclick={() => handleWantCancel(String(item.id))}>
         ほしいを取り消す
       </button>
     {/if}
-
-  {:else if item.status === 'available' && String(item.owner) !== String(auth.user?.id)}
+  {:else if item.status === "available" && String(item.owner) !== String(auth.user?.id)}
     <!-- ほしいボタン（自分が出品していないavailable品） -->
     <button onclick={() => handleWant(String(item.id))}>ほしい</button>
-
-  {:else if item.status === 'negotiating' && String(item.owner) === String(auth.user?.id)}
+  {:else if item.status === "negotiating" && String(item.owner) === String(auth.user?.id)}
     <!-- 出品者向け: 希望者ID/名前 + 案内 + あげない / あげる -->
     {#if item.requester_user_id || item.requester_name}
       <div class="space-y-1 rounded-2xl bg-yellow-50 px-3 py-2 text-yellow-800">
         <p class="font-medium">
           {#if item.requester_user_id}{item.requester_user_id}{/if}
           {#if item.requester_name}
-            {item.requester_user_id ? `（${item.requester_name}）` : item.requester_name}
+            {item.requester_user_id
+              ? `（${item.requester_name}）`
+              : item.requester_name}
           {/if}
           さんがほしい申請中です。
         </p>
         <p>次はLINEやメールなどでやりとりしてください。</p>
-        <p>譲ることが決まったら「あげる」、見送る場合は「あげない」を押してください。</p>
+        <p>
+          譲ることが決まったら「あげる」、見送る場合は「あげない」を押してください。
+        </p>
       </div>
     {/if}
-    <button onclick={() => handleNegotiationFailed(String(item.id))}>あげない</button>
+    <button onclick={() => handleNegotiationFailed(String(item.id))}
+      >あげない</button
+    >
     <button onclick={() => handleTransferred(String(item.id))}>あげる</button>
   {/if}
 </div>
@@ -1057,7 +1100,7 @@ if (!ownedByCurrentUser && !isAdmin) {
 `src/routes/+page.svelte` のヘッダーに管理者のみ表示するリンクを追加する。
 
 ```svelte
-{#if auth.user?.role === 'admin'}
+{#if auth.user?.role === "admin"}
   <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">管理</a>
 {/if}
 ```

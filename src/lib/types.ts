@@ -1,4 +1,6 @@
-export type Item = {
+import type { ItemCategories } from "./itemCategories";
+
+export type Item = ItemCategories & {
   id: string;
   owner: string; // record<user> の文字列表現
   title: string;

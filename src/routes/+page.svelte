@@ -3,6 +3,11 @@
   import { Table } from "surrealdb";
   import { db } from "$lib/db";
   import { auth, logout } from "$lib/auth.svelte";
+  import {
+    ITEM_CATEGORY_AGES,
+    ITEM_CATEGORY_GENDERS,
+    ITEM_CATEGORY_TYPES,
+  } from "$lib/itemCategories";
   import type { Item, Want } from "$lib/types";
   import { goto } from "$app/navigation";
   import { formatFullName } from "$lib/userName";
@@ -13,6 +18,9 @@
   let actionLoading = $state<Record<string, boolean>>({});
   let myWantIds = $state<Set<string>>(new Set());
   let killLive: (() => Promise<void>) | undefined;
+  let filterType = $state("");
+  let filterAge = $state("");
+  let filterGender = $state("");
 
   // ステータスの日本語表示
   const statusLabel: Record<Item["status"], string> = {
@@ -36,6 +44,17 @@
   const sellerContactMessage = "次はLINEやメールなどでやりとりしてください。";
   const sellerResolutionMessage =
     "譲ることが決まったら「あげる」、見送る場合は「あげない」を押してください。";
+  const filteredItems = $derived(
+    items.filter((item) => {
+      if (filterType && item.category_type !== filterType) return false;
+      if (filterAge && item.category_age !== filterAge) return false;
+      if (filterGender && item.category_gender !== filterGender) return false;
+      return true;
+    }),
+  );
+  const hasActiveFilters = $derived(
+    Boolean(filterType || filterAge || filterGender),
+  );
 
   function recordId(value: unknown) {
     return String(value);
@@ -320,15 +339,62 @@
 
 <!-- 出品一覧 -->
 <main class="mx-auto max-w-6xl px-4 py-6">
+  <div class="mx-auto flex max-w-6xl flex-wrap gap-2 pb-4">
+    <select
+      bind:value={filterType}
+      class="rounded border border-gray-300 px-2 py-1 text-sm"
+    >
+      <option value="">品目: すべて</option>
+      {#each ITEM_CATEGORY_TYPES as option (option)}
+        <option value={option}>{option}</option>
+      {/each}
+    </select>
+
+    <select
+      bind:value={filterAge}
+      class="rounded border border-gray-300 px-2 py-1 text-sm"
+    >
+      <option value="">年齢: すべて</option>
+      {#each ITEM_CATEGORY_AGES as option (option)}
+        <option value={option}>{option}</option>
+      {/each}
+    </select>
+
+    <select
+      bind:value={filterGender}
+      class="rounded border border-gray-300 px-2 py-1 text-sm"
+    >
+      <option value="">性別: すべて</option>
+      {#each ITEM_CATEGORY_GENDERS as option (option)}
+        <option value={option}>{option}</option>
+      {/each}
+    </select>
+
+    {#if hasActiveFilters}
+      <button
+        onclick={() => {
+          filterType = "";
+          filterAge = "";
+          filterGender = "";
+        }}
+        class="text-xs text-gray-400 hover:text-gray-600"
+      >
+        リセット
+      </button>
+    {/if}
+  </div>
+
   {#if loading}
     <p class="text-center text-gray-400">読み込み中...</p>
   {:else if errorMsg}
     <p class="text-center text-sm text-red-500">{errorMsg}</p>
   {:else if items.length === 0}
     <p class="text-center text-gray-400">出品中のアイテムはありません</p>
+  {:else if filteredItems.length === 0}
+    <p class="text-center text-gray-400">条件に一致する出品はありません</p>
   {:else}
     <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {#each items as item (item.id)}
+      {#each filteredItems as item (item.id)}
         <article
           class="flex h-full flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm"
         >
@@ -363,6 +429,36 @@
                 <p class="mt-1 line-clamp-3 text-sm text-gray-600">
                   {item.description}
                 </p>
+                {#if item.category_type}
+                  <div class="mt-2 flex flex-wrap gap-1 text-xs">
+                    <span
+                      class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500"
+                    >
+                      {item.category_type}
+                    </span>
+                    {#if item.category_age}
+                      <span
+                        class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500"
+                      >
+                        {item.category_age}
+                      </span>
+                    {/if}
+                    {#if item.category_gender}
+                      <span
+                        class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500"
+                      >
+                        {item.category_gender}
+                      </span>
+                    {/if}
+                    {#if item.category_size}
+                      <span
+                        class="rounded-full bg-blue-50 px-2 py-0.5 text-blue-500"
+                      >
+                        {item.category_size}
+                      </span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
               {#if isOwnedByCurrentUser(item)}
                 <a
