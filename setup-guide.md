@@ -314,7 +314,7 @@ interface Platform {
 - ローカル開発では `.dev.vars` に `GOOGLE_AI_API_KEY=...` を設定する
 - Cloudflare Pages 本番では Dashboard の **Settings > Environment variables** に同名の変数を追加する
 - `src/routes/api/categorize/+server.ts` では `platform.env.GOOGLE_AI_API_KEY` から取得する
-- Gemini 呼び出しは `x-goog-api-key` ヘッダー + `responseMimeType: 'application/json'` で実装する
+- Gemini 呼び出しは `gemini-3-flash-preview` を使い、`x-goog-api-key` ヘッダー + `responseMimeType: 'application/json'` で実装する
 - カテゴリ判定に失敗しても出品は継続し、カテゴリだけ `null` で保存する
 
 > **注意:** APIキーは `.env` や `PUBLIC_` 付き環境変数に入れない。ブラウザ公開値にしないこと。
