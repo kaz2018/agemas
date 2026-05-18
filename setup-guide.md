@@ -555,6 +555,7 @@ function isOwnedByCurrentUser(item: Item) {
 - APIレスポンスは許可値へ正規化し、`category_type !== "服・小物"` の場合は `category_size` を必ず `null` にする
 - 失敗時は `{ category_type: null, category_age: null, category_gender: null, category_size: null }` を返し、出品フロー自体は止めない
 - SurrealDB の `option<string>` フィールドへは JSON `null` をそのまま書けないため、保存クエリでは `IF $category_x = NULL THEN NONE ELSE $category_x END` に変換して書き込む
+- 管理者向けに `/admin/categorize-test` を作ると、サンプルタイトル・説明を同じ `/api/categorize` に送って HTTP status / 生レスポンス / 正規化後カテゴリを確認できる
 - `npm run check:surreal-compat` を毎回実行し、旧SurrealDB記法の混入がないことを確認する
 
 ### 6-1. 出品作成（/items/new）
