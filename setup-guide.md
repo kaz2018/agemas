@@ -428,7 +428,8 @@ UPDATE user:l8kqnlmqgy20ka8b8a9d SET
 
 ### 4-6. +layout.svelte にページガードを追加
 
-`onMount` で `initAuth()` を呼び出し、`$effect` で未ログイン時に `/login` にリダイレクト。セッション復元中はローディング表示。
+`onMount` で `initAuth()` を呼び出し、`$effect` で未ログイン時に `/login` にリダイレクトする。
+公開ページを追加したら `publicPaths` に `/about` と `/qa` を含め、未ログインでも閲覧できるようにする。セッション復元中はローディング表示。
 
 ---
 
@@ -444,6 +445,14 @@ UPDATE user:l8kqnlmqgy20ka8b8a9d SET
 - 出品者名は `owner.last_name + ' ' + owner.first_name AS owner_name` でJOIN取得
 - 画面表示は `姓 名` の半角スペース区切りで統一する
 - Live Query でリアルタイム更新
+- ヘッダーは PC では `ユーザー名 / ＋出品する / 目的 / Q&A / 管理 / ログアウト` を横並びにし、スマホでは `ユーザー名` と `＋出品する` を常時表示、`≡` ボタン内に `目的 / Q&A / 管理 / ログアウト` を収める
+
+### 5-3. 公開案内ページ（/about, /qa）
+
+- `src/routes/about/+page.svelte` と `src/routes/qa/+page.svelte` を追加する
+- どちらも `auth` や `db` を import せず、未ログインで閲覧できる独立ページにする
+- ヘッダーは左にサービス名（`/` へのリンク）、右に `掲示板を見る →` ボタン（`/` へのリンク）を置く
+- `/about` にはサービスの目的、`/qa` には対象範囲と新規登録方法のQ&Aを載せる
 
 **Live Query の注意点:**
 

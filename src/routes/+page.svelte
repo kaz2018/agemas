@@ -21,6 +21,7 @@
   let filterType = $state("");
   let filterAge = $state("");
   let filterGender = $state("");
+  let menuOpen = $state(false);
 
   // ステータスの日本語表示
   const statusLabel: Record<Item["status"], string> = {
@@ -322,17 +323,84 @@
       >
         ＋ 出品する
       </a>
-      {#if auth.user?.role === "admin"}
-        <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600"
-          >管理</a
+      <div class="hidden items-center gap-3 md:flex">
+        <a href="/about" class="text-sm text-gray-400 hover:text-gray-600"
+          >目的</a
         >
-      {/if}
-      <button
-        onclick={handleLogout}
-        class="text-sm text-gray-400 hover:text-gray-600"
-      >
-        ログアウト
-      </button>
+        <a href="/qa" class="text-sm text-gray-400 hover:text-gray-600"
+          >Q&amp;A</a
+        >
+        {#if auth.user?.role === "admin"}
+          <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600"
+            >管理</a
+          >
+        {/if}
+        <button
+          onclick={handleLogout}
+          class="text-sm text-gray-400 hover:text-gray-600"
+        >
+          ログアウト
+        </button>
+      </div>
+      <div class="relative md:hidden">
+        <button
+          type="button"
+          class="rounded border border-gray-200 px-3 py-1 text-lg text-gray-600 hover:bg-gray-50"
+          aria-expanded={menuOpen}
+          aria-label="メニューを開く"
+          onclick={() => {
+            menuOpen = !menuOpen;
+          }}
+        >
+          ≡
+        </button>
+
+        {#if menuOpen}
+          <div
+            class="absolute right-0 top-full z-10 mt-2 w-40 rounded-lg border border-gray-200 bg-white py-2 shadow-lg"
+          >
+            <a
+              href="/about"
+              class="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              onclick={() => {
+                menuOpen = false;
+              }}
+            >
+              目的
+            </a>
+            <a
+              href="/qa"
+              class="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              onclick={() => {
+                menuOpen = false;
+              }}
+            >
+              Q&amp;A
+            </a>
+            {#if auth.user?.role === "admin"}
+              <a
+                href="/admin"
+                class="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                onclick={() => {
+                  menuOpen = false;
+                }}
+              >
+                管理
+              </a>
+            {/if}
+            <button
+              type="button"
+              class="block w-full px-4 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              onclick={async () => {
+                menuOpen = false;
+                await handleLogout();
+              }}
+            >
+              ログアウト
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 </header>

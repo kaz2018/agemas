@@ -13,9 +13,11 @@
 		initAuth();
 	});
 
-	// 未ログインかつ /login 以外のページならリダイレクト
+	const publicPaths = ['/login', '/about', '/qa'];
+
+	// 未ログインかつ公開ページ以外ならリダイレクト
 	$effect(() => {
-		if (!auth.loading && !auth.user && $page.url.pathname !== '/login') {
+		if (!auth.loading && !auth.user && !publicPaths.includes($page.url.pathname)) {
 			goto('/login');
 		}
 	});
