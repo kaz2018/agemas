@@ -24,7 +24,7 @@
 
     <div class="space-y-6">
       <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
-        <div class="mb-3 text-3xl text-amber-400">&#128149;</div>
+        <div class="mb-3 text-3xl text-amber-400">&#128230;</div>
         <h2 class="mb-3 text-xl font-semibold text-amber-800">
           おさがりをスムーズに
         </h2>
