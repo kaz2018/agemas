@@ -2,43 +2,47 @@
   <title>このサービスについて | おさがり掲示板</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-50">
-  <header class="border-b bg-white px-4 py-3 shadow-sm">
+<div class="min-h-screen bg-amber-50">
+  <header class="border-b border-amber-100 bg-white px-4 py-3">
     <div class="mx-auto flex max-w-4xl items-center justify-between gap-3">
-      <a href="/" class="text-lg font-bold text-gray-800 hover:text-gray-600"
+      <a href="/" class="text-lg font-bold text-amber-800 hover:text-amber-600"
         >おさがり掲示板</a
       >
       <a
         href="/"
-        class="rounded bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+        class="rounded-full bg-rose-400 px-5 py-2 text-sm font-medium text-white hover:bg-rose-500"
       >
         掲示板を見る →
       </a>
     </div>
   </header>
 
-  <main class="mx-auto max-w-4xl px-4 py-10">
-    <div class="rounded-lg bg-white p-8 shadow-sm">
-      <h1 class="text-2xl font-bold text-gray-800">このサービスについて</h1>
+  <main class="mx-auto max-w-4xl px-4 py-12">
+    <h1 class="mb-8 text-center text-2xl font-bold text-amber-900">
+      このサービスについて
+    </h1>
 
-      <div class="mt-8 space-y-8">
-        <section class="space-y-3">
-          <h2 class="text-xl font-semibold text-gray-800">
-            お下がりをスムーズに
-          </h2>
-          <p class="leading-7 text-gray-600">
-            子ども服や育児グッズのお下がりを、必要な人へ直接つなぎます。処分の手間もかからず、お金をかけずに子育てできる仕組みを目指しています。
-          </p>
-        </section>
+    <div class="space-y-6">
+      <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
+        <div class="mb-3 text-3xl text-amber-400">&#128149;</div>
+        <h2 class="mb-3 text-xl font-semibold text-amber-800">
+          おさがりをスムーズに
+        </h2>
+        <p class="leading-8 text-gray-600">
+          子ども服や育児グッズのおさがりを、必要な人へ直接つなぎます。<br />
+          処分の手間もかからず、お金をかけずに子育てできる仕組みを目指しています。
+        </p>
+      </div>
 
-        <section class="space-y-3">
-          <h2 class="text-xl font-semibold text-gray-800">
-            ママさんたちのつながりを育てる
-          </h2>
-          <p class="leading-7 text-gray-600">
-            物のやり取りをきっかけに、麻績村・筑北村のママさんたちが気軽に助け合えるコミュニティを作りたいと思っています。
-          </p>
-        </section>
+      <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
+        <div class="mb-3 text-3xl text-rose-300">&#127968;</div>
+        <h2 class="mb-3 text-xl font-semibold text-amber-800">
+          ママさんたちのつながりを育てる
+        </h2>
+        <p class="leading-8 text-gray-600">
+          物のやり取りをきっかけに、麻績村・筑北村のママさんたちが<br />
+          気軽に助け合えるコミュニティを作りたいと思っています。
+        </p>
       </div>
     </div>
   </main>

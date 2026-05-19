@@ -2,43 +2,54 @@
   <title>よくある質問 | おさがり掲示板</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-50">
-  <header class="border-b bg-white px-4 py-3 shadow-sm">
+<div class="min-h-screen bg-amber-50">
+  <header class="border-b border-amber-100 bg-white px-4 py-3">
     <div class="mx-auto flex max-w-4xl items-center justify-between gap-3">
-      <a href="/" class="text-lg font-bold text-gray-800 hover:text-gray-600"
+      <a href="/" class="text-lg font-bold text-amber-800 hover:text-amber-600"
         >おさがり掲示板</a
       >
       <a
         href="/"
-        class="rounded bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+        class="rounded-full bg-rose-400 px-5 py-2 text-sm font-medium text-white hover:bg-rose-500"
       >
         掲示板を見る →
       </a>
     </div>
   </header>
 
-  <main class="mx-auto max-w-4xl px-4 py-10">
-    <div class="rounded-lg bg-white p-8 shadow-sm">
-      <h1 class="text-2xl font-bold text-gray-800">よくある質問</h1>
+  <main class="mx-auto max-w-4xl px-4 py-12">
+    <h1 class="mb-8 text-center text-2xl font-bold text-amber-900">
+      よくある質問
+    </h1>
 
-      <div class="mt-8 space-y-8">
-        <section class="space-y-3">
-          <h2 class="text-lg font-semibold text-gray-800">
-            Q1. 対象範囲は？
-          </h2>
-          <p class="leading-7 text-gray-600">
-            麻績村・筑北村にお住まいの、子育て世代のママさん限定です。地域コミュニティの活性化を目的としているため、対象エリアを絞っています。子ども以外のお下がりのやり取りは、別サービスとして検討中です。
-          </p>
-        </section>
+    <div class="space-y-4">
+      <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
+        <p class="mb-3 font-semibold text-amber-800">
+          <span
+            class="mr-2 inline-block rounded-full bg-amber-100 px-3 py-0.5 text-sm text-amber-600"
+            >Q</span
+          >
+          対象範囲は？
+        </p>
+        <p class="pl-1 leading-8 text-gray-600">
+          麻績村・筑北村にお住まいの、子育て世代のママさん限定です。<br />
+          地域コミュニティの活性化を目的としているため、対象エリアを絞っています。<br
+          />
+          子ども以外のおさがりのやり取りは、別サービスとして検討中です。
+        </p>
+      </div>
 
-        <section class="space-y-3">
-          <h2 class="text-lg font-semibold text-gray-800">
-            Q2. 新規登録したい場合は？
-          </h2>
-          <p class="leading-7 text-gray-600">
-            管理者（宮川）までご連絡ください。
-          </p>
-        </section>
+      <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
+        <p class="mb-3 font-semibold text-amber-800">
+          <span
+            class="mr-2 inline-block rounded-full bg-amber-100 px-3 py-0.5 text-sm text-amber-600"
+            >Q</span
+          >
+          新規登録したい場合は？
+        </p>
+        <p class="pl-1 leading-8 text-gray-600">
+          管理者（宮川）までご連絡ください。
+        </p>
       </div>
     </div>
   </main>

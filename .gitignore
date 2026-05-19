@@ -5,6 +5,7 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+.dev.vars
 
 # 自動生成ファイル
 node_modules/
