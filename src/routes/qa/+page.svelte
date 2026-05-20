@@ -45,6 +45,21 @@
             class="mr-2 inline-block rounded-full bg-amber-100 px-3 py-0.5 text-sm text-amber-600"
             >Q</span
           >
+          有料ですか？将来的に有料化する予定はありますか？
+        </p>
+        <p class="pl-1 leading-8 text-gray-600">
+          いいえ、完全無料のサービスです！将来的に有料化する予定もありません。<br />
+          この掲示板は、完全なボランティアで無理なく続けていけることを目指しています。そのため、なるべくシンプルで運営や管理に時間・手間のかからない作りにしています。<br />
+          なお、同じ理由から、実装や管理が複雑になるような機能のご要望については、お応えするのが難しい場合があります。あらかじめご了承ください。
+        </p>
+      </div>
+
+      <div class="rounded-2xl border border-amber-100 bg-white p-8 shadow-sm">
+        <p class="mb-3 font-semibold text-amber-800">
+          <span
+            class="mr-2 inline-block rounded-full bg-amber-100 px-3 py-0.5 text-sm text-amber-600"
+            >Q</span
+          >
           新規登録したい場合は？
         </p>
         <p class="pl-1 leading-8 text-gray-600">
