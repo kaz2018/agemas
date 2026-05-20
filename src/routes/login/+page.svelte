@@ -112,5 +112,9 @@
 				{loading ? 'ログイン中...' : 'ログイン'}
 			</button>
 		</form>
+
+		<div class="mt-6 border-t border-gray-100 pt-4 text-center text-xs text-gray-400">
+			<p>ログインできない場合やPINを忘れた方は、管理者の個人LINEまで直接ご連絡ください。</p>
+		</div>
 	</div>
 </div>

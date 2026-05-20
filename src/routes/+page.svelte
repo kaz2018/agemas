@@ -625,3 +625,9 @@
     </div>
   {/if}
 </main>
+
+<footer class="mx-auto max-w-6xl px-4 pb-12 text-center text-xs text-gray-400">
+  <div class="border-t border-gray-200 pt-6">
+    <p>不具合や改善のご要望がございましたら、いつもの管理者LINEまで直接ご連絡ください。</p>
+  </div>
+</footer>
